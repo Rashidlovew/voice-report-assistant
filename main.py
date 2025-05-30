@@ -7,24 +7,22 @@ from pydub import AudioSegment
 
 app = Flask(__name__)
 
-# API Keys from Render environment variables
+# API Keys from environment variables (Render)
 openai.api_key = os.environ["OPENAI_KEY"]
 ELEVENLABS_API_KEY = os.environ["ELEVENLABS_KEY"]
 
-# Serve the index.html page
+# Serve the index.html from static/
 @app.route('/')
 def index():
-    return send_from_directory('../static', 'index.html')
+    return send_from_directory('static', 'index.html')
 
-
-# Whisper Transcription
+# Transcribe Arabic audio using Whisper
 def transcribe_audio(file_path):
     with open(file_path, "rb") as audio_file:
         transcript = openai.Audio.transcribe("whisper-1", audio_file, language="ar")
     return transcript["text"]
 
-
-# GPT Rephrasing
+# Rephrase text using GPT-4 in formal Arabic
 def rephrase_with_gpt(text):
     prompt = f"أعد صياغة هذا النص ليكون مناسبًا لتقرير فحص جنائي دون إضافة مبالغات: {text}"
     response = openai.ChatCompletion.create(
@@ -33,14 +31,13 @@ def rephrase_with_gpt(text):
     )
     return response.choices[0].message.content.strip()
 
-
-# ElevenLabs TTS
+# Convert Arabic reply to voice using ElevenLabs
 def generate_voice(text):
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json"
     }
-    voice_id = "EXAVITQu4vr4xnSDxMaL"  # Replace with your Arabic voice ID if available
+    voice_id = "EXAVITQu4vr4xnSDxMaL"  # Replace with Arabic voice ID if needed
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     payload = {
@@ -54,8 +51,7 @@ def generate_voice(text):
     temp_mp3.flush()
     return temp_mp3.name
 
-
-# Handle voice upload
+# Handle POST /voice with audio upload
 @app.route('/voice', methods=['POST'])
 def handle_voice():
     if 'audio' not in request.files:
@@ -75,6 +71,6 @@ def handle_voice():
 
     return send_file(voice_path, mimetype="audio/mpeg")
 
-
+# Start the Flask server
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
