@@ -6,7 +6,9 @@ const stopButton = document.getElementById("stop");
 const player = document.getElementById("player");
 
 startButton.onclick = async () => {
+  console.log("Start button clicked");
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  console.log("🎤 Microphone access granted!");
   mediaRecorder = new MediaRecorder(stream);
   audioChunks = [];
 
