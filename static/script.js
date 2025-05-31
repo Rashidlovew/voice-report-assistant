@@ -1,8 +1,9 @@
 let mediaRecorder, audioChunks = [];
 
-async function startConversation() {
-  await fetch("/start", { method: "POST" });
-  speakNextPrompt();
+function startConversation() {
+  fetch("/start", { method: "POST" }).then(() => {
+    speakNextPrompt();
+  });
 }
 
 function speakNextPrompt() {
@@ -13,13 +14,18 @@ function speakNextPrompt() {
         document.getElementById("status").innerText = "✅ تم إرسال التقرير";
         return;
       }
-      const audio = new Audio(URL.createObjectURL(new Blob([new Uint8Array(data.audio.data)])));
+
+      const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
+      const audio = new Audio(URL.createObjectURL(audioBlob));
+
       document.getElementById("responseText").value = data.prompt;
       document.getElementById("status").innerText = "🎧 استمع إلى: " + data.prompt;
+
       audio.onended = () => {
-        document.getElementById("status").innerText = "🎙️ استمع لردك...";
+        document.getElementById("status").innerText = "🎙️ جاري الاستماع لردك...";
         listen();
       };
+
       audio.play();
     });
 }
@@ -35,26 +41,29 @@ async function listen() {
   setTimeout(() => {
     mediaRecorder.stop();
     mediaRecorder.onstop = sendReply;
-  }, 5000);
+  }, 5000); // Listen for 5 seconds
 }
 
 async function sendReply() {
   const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
   const formData = new FormData();
   formData.append("audio", audioBlob);
-  const res = await fetch("/listen", { method: "POST", body: formData });
-  const data = await res.json();
 
-  document.getElementById("responseText").value = data.text;
+  const res = await fetch("/listen", {
+    method: "POST",
+    body: formData
+  });
+
+  const data = await res.json();
+  document.getElementById("responseText").value = data.text || "";
   document.getElementById("status").innerText = "🔊 " + data.action;
 
   if (data.audio) {
-    const audio = new Audio(URL.createObjectURL(new Blob([new Uint8Array(data.audio.data)])));
+    const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
+    const audio = new Audio(URL.createObjectURL(audioBlob));
     audio.onended = speakNextPrompt;
     audio.play();
   } else {
     speakNextPrompt();
   }
 }
-
-startConversation();
