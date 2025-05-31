@@ -11,7 +11,6 @@ from email.message import EmailMessage
 import smtplib
 import requests
 
-# === Configuration ===
 OPENAI_KEY = os.environ["OPENAI_KEY"]
 ELEVENLABS_KEY = os.environ["ELEVENLABS_KEY"]
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
@@ -32,11 +31,9 @@ field_names_ar = {
 }
 field_order = list(field_names_ar.keys())
 
-# === Session State ===
 current_field_index = 0
 user_inputs = {}
 
-# === Helpers ===
 def format_paragraph(p):
     if p.runs:
         run = p.runs[0]
@@ -93,9 +90,8 @@ def enhance_with_gpt(field_name, user_input, edit_instruction=None):
     return response.choices[0].message.content.strip()
 
 def speak_text(text):
-    # 1. Get ElevenLabs stream
     response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
+        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr",
         headers={
             "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json",
@@ -103,24 +99,13 @@ def speak_text(text):
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-            "output_format": "mp3_44100_128"
+            "voice_settings": {
+                "stability": 0.5,
+                "similarity_boost": 0.75
+            }
         }
     )
-
-    # 2. Save raw stream to temp file
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-        f.write(response.content)
-        temp_mp3_path = f.name
-
-    # 3. Reprocess with pydub to clean MP3 format
-    audio = AudioSegment.from_file(temp_mp3_path)
-    clean_mp3_path = tempfile.mktemp(suffix=".mp3")
-    audio.export(clean_mp3_path, format="mp3")
-
-    # 4. Return final playable audio bytes
-    with open(clean_mp3_path, "rb") as f:
-        return f.read()
+    return response.content
 
 def send_email(subject, body, to, attachment_path):
     msg = EmailMessage()
@@ -147,8 +132,6 @@ def detect_action(text):
     if t.startswith("أضف") or t.startswith("غير") or t.startswith("استبدل"):
         return f"edit:{t}"
     return "input"
-
-# === Web Routes ===
 
 @app.route("/")
 def index():
