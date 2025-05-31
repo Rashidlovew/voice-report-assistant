@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>مساعد إعداد التقرير الصوتي</title>
+</head>
+<body>
+  <h2>🎙️ مساعد إعداد تقرير الفحص</h2>
+  <label for="field">📝 اختر الحقل:</label>
+  <select id="field">
+    <option value="Date">التاريخ</option>
+    <option value="Briefing">موجز الواقعة</option>
+    <option value="LocationObservations">معاينة الموقع</option>
+    <option value="Examination">نتيجة الفحص الفني</option>
+    <option value="Outcomes">النتيجة</option>
+    <option value="TechincalOpinion">الرأي الفني</option>
+  </select>
+
+  <br /><br />
+  <button id="recordBtn">🎤 تسجيل</button>
+  <p id="status">الحالة: جاهز</p>
+  <textarea id="responseText" rows="6" cols="60" placeholder="النص المعاد صياغته سيظهر هنا..."></textarea>
+  <br />
+  <button onclick="sendReply('approve')">✅ موافق</button>
+  <button onclick="sendReply('redo')">🔁 إعادة</button>
+  <button onclick="editText()">✏️ تعديل</button>
+  <br /><br />
+  <button onclick="generateReport()">📄 إنشاء التقرير</button>
+
+  <script src="/static/script.js"></script>
+</body>
+</html>
