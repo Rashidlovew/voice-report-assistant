@@ -1,8 +1,5 @@
 let mediaRecorder;
 let audioChunks = [];
-let currentFieldIndex = 0;
-
-const fields = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
 
 function startConversation() {
     fetch("/start", { method: "POST" })
@@ -15,7 +12,7 @@ function startConversation() {
 }
 
 function playAudio(audioBytes) {
-    const blob = new Blob([new Uint8Array(audioBytes)], { type: "audio/mpeg" }); // ✅ Fix: explicitly declare MP3
+    const blob = new Blob([new Uint8Array(audioBytes)], { type: "audio/mpeg" });
     const url = URL.createObjectURL(blob);
     const audio = new Audio(url);
     audio.play().catch(err => {
@@ -53,13 +50,11 @@ function startRecording() {
 
         setTimeout(() => {
             mediaRecorder.stop();
-        }, 7000); // Adjust as needed
+        }, 7000);
     });
 }
 
 document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("startButton").addEventListener("click", startConversation);
-
-    const transcriptBox = document.getElementById("transcript");
-    transcriptBox.addEventListener("focus", startRecording);
+    document.getElementById("transcript").addEventListener("focus", startRecording);
 });
