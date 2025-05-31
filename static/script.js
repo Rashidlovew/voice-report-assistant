@@ -1,71 +1,60 @@
-let mediaRecorder;
-let audioChunks = [];
+let mediaRecorder, audioChunks = [];
 
-document.getElementById("recordBtn").onclick = async () => {
+async function startConversation() {
+  await fetch("/start", { method: "POST" });
+  speakNextPrompt();
+}
+
+function speakNextPrompt() {
+  fetch("/fieldPrompt")
+    .then(res => res.json())
+    .then(data => {
+      if (data.done) {
+        document.getElementById("status").innerText = "✅ تم إرسال التقرير";
+        return;
+      }
+      const audio = new Audio(URL.createObjectURL(new Blob([new Uint8Array(data.audio.data)])));
+      document.getElementById("responseText").value = data.prompt;
+      document.getElementById("status").innerText = "🎧 استمع إلى: " + data.prompt;
+      audio.onended = () => {
+        document.getElementById("status").innerText = "🎙️ استمع لردك...";
+        listen();
+      };
+      audio.play();
+    });
+}
+
+async function listen() {
   audioChunks = [];
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   mediaRecorder = new MediaRecorder(stream);
   mediaRecorder.start();
-  document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
 
-  mediaRecorder.ondataavailable = e => {
-    audioChunks.push(e.data);
-  };
+  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
-  mediaRecorder.onstop = async () => {
-    const field = document.getElementById("field").value;
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const formData = new FormData();
-    formData.append("audio", audioBlob);
-    formData.append("field", field);
-
-    document.getElementById("status").innerText = "🔁 جاري المعالجة...";
-
-    const response = await fetch("/voice", { method: "POST", body: formData });
-    const result = await response.json();
-    document.getElementById("responseText").value = result.text;
-    document.getElementById("status").innerText = "✅ تمت المعالجة";
-  };
-
-  setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 seconds
-};
-
-function sendReply(action) {
-  const field = document.getElementById("field").value;
-  const payload = {
-    field,
-    action
-  };
-  fetch("/reply", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  }).then(r => r.json()).then(res => {
-    if (res.text) {
-      document.getElementById("responseText").value = res.text;
-    }
-    document.getElementById("status").innerText = "✅ تم تحديث النص";
-  });
+  setTimeout(() => {
+    mediaRecorder.stop();
+    mediaRecorder.onstop = sendReply;
+  }, 5000);
 }
 
-function editText() {
-  const edit = prompt("اكتب التعديل المطلوب:");
-  if (edit) {
-    sendReply("edit:" + edit);
+async function sendReply() {
+  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+  const formData = new FormData();
+  formData.append("audio", audioBlob);
+  const res = await fetch("/listen", { method: "POST", body: formData });
+  const data = await res.json();
+
+  document.getElementById("responseText").value = data.text;
+  document.getElementById("status").innerText = "🔊 " + data.action;
+
+  if (data.audio) {
+    const audio = new Audio(URL.createObjectURL(new Blob([new Uint8Array(data.audio.data)])));
+    audio.onended = speakNextPrompt;
+    audio.play();
+  } else {
+    speakNextPrompt();
   }
 }
 
-function generateReport() {
-  fetch("/generate", { method: "POST" })
-    .then(res => res.blob())
-    .then(blob => {
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "police_report.docx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      document.getElementById("status").innerText = "📩 تم إنشاء التقرير";
-    });
-}
+startConversation();
