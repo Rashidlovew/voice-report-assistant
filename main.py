@@ -1,7 +1,7 @@
 import os
 import tempfile
 import json
-from flask import Flask, request, jsonify, send_file, render_template
+from flask import Flask, request, jsonify, render_template
 from openai import OpenAI
 from docxtpl import DocxTemplate
 from docx.shared import Pt
@@ -98,11 +98,12 @@ def speak_text(text):
         headers={
             "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json",
-            "Accept": "audio/mpeg"  # ✅ Ensure browser-compatible format
+            "Accept": "audio/mpeg"
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
+            "output_format": "mp3_44100_128"  # ✅ Critical fix for browser compatibility
         }
     )
     return response.content
