@@ -1,33 +1,17 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <title>مساعد إعداد التقرير الصوتي</title>
-  <style>
-    body {
-      font-family: Arial, sans-serif;
-      text-align: center;
-      margin-top: 50px;
-      direction: rtl;
-    }
-    button {
-      font-size: 18px;
-      padding: 10px 20px;
-      margin: 10px;
-    }
-    audio {
-      margin-top: 20px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>مساعد التقارير الصوتي</title>
 </head>
-<body>
-  <h1>🎤 مساعد إعداد التقرير</h1>
-  <p>اضغط على زر التسجيل وتحدث، ثم استمع للرد من المساعد.</p>
-  <button id="start">▶️ ابدأ التسجيل</button>
-  <button id="stop" disabled>⏹️ أوقف التسجيل</button>
-  <br />
-  <audio id="player" controls></audio>
+<body style="font-family: Arial; text-align: center; margin-top: 50px;">
+    <h1>📝 مساعد إعداد تقرير الفحص</h1>
+    <h2 id="fieldLabel">اضغط لبدء التسجيل للتاريخ</h2>
+    <button id="recordBtn">🎙️ ابدأ التسجيل</button>
+    <button id="stopBtn" disabled>⏹️ أوقف التسجيل</button>
+    <audio id="responseAudio" controls style="margin-top: 20px;"></audio>
+    <p id="status" style="margin-top: 20px; font-size: 18px;"></p>
 
-  <script src="script.js"></script>
+    <script src="script.js"></script>
 </body>
 </html>
