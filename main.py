@@ -11,7 +11,7 @@ from email.message import EmailMessage
 import smtplib
 import requests
 
-# Configuration
+# === Configuration ===
 OPENAI_KEY = os.environ["OPENAI_KEY"]
 ELEVENLABS_KEY = os.environ["ELEVENLABS_KEY"]
 EMAIL_SENDER = os.environ["EMAIL_SENDER"]
@@ -30,10 +30,13 @@ field_names_ar = {
     "Outcomes": "النتيجة",
     "TechincalOpinion": "الرأي الفني"
 }
-
 field_order = list(field_names_ar.keys())
-session_data = {}
 
+# === Session State ===
+current_field_index = 0
+user_inputs = {}
+
+# === Helpers ===
 def format_paragraph(p):
     if p.runs:
         run = p.runs[0]
@@ -119,58 +122,77 @@ def send_email(subject, body, to, attachment_path):
         smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
-@app.route("/", methods=["GET"])
+def detect_action(text):
+    t = text.strip().replace("،", "").replace(".", "")
+    if t in ["نعم", "اعتمد", "تمام"]:
+        return "approve"
+    if t in ["لا", "إعادة", "أعد", "كرر"]:
+        return "redo"
+    if t.startswith("أضف") or t.startswith("غير") or t.startswith("استبدل"):
+        return f"edit:{t}"
+    return "input"
+
+# === Web Routes ===
+
+@app.route("/")
 def index():
     return render_template("index.html")
 
-@app.route("/voice", methods=["POST"])
-def handle_voice():
-    field = request.form["field"]
+@app.route("/start", methods=["POST"])
+def start_session():
+    global current_field_index, user_inputs
+    current_field_index = 0
+    user_inputs = {}
+    return "ok"
+
+@app.route("/fieldPrompt")
+def field_prompt():
+    if current_field_index >= len(field_order):
+        filename = "police_report.docx"
+        generate_report(user_inputs, filename)
+        send_email("📄 تقرير فحص", "تم إعداد التقرير وإرفاقه في البريد.", EMAIL_RECEIVER, filename)
+        return jsonify({"done": True})
+
+    field = field_order[current_field_index]
+    prompt = f"🎙️ {field_names_ar[field]}، الرجاء التحدث."
+    audio = speak_text(prompt)
+    return jsonify({"prompt": prompt, "audio": list(audio)})
+
+@app.route("/listen", methods=["POST"])
+def listen_reply():
+    global current_field_index
+    field = field_order[current_field_index]
     audio_file = request.files["audio"]
     tmp_path = tempfile.mktemp(suffix=".webm")
     audio_file.save(tmp_path)
 
-    try:
-        raw_text = transcribe_audio(tmp_path)
-        rephrased = enhance_with_gpt(field, raw_text)
-        audio_reply = speak_text(rephrased)
-        session_data[field] = rephrased
+    text = transcribe_audio(tmp_path).strip()
+    action = detect_action(text)
 
+    if action == "approve":
+        current_field_index += 1
+        return jsonify({"action": "تم الاعتماد", "audio": list(speak_text("تم الاعتماد"))})
+
+    elif action == "redo":
+        return jsonify({"action": "يرجى إعادة الإرسال", "audio": list(speak_text("يرجى إعادة الإرسال"))})
+
+    elif action.startswith("edit:"):
+        edit_instr = action.replace("edit:", "")
+        revised = enhance_with_gpt(field, user_inputs[field], edit_instr)
+        user_inputs[field] = revised
+        return jsonify({"action": "تم التعديل", "text": revised, "audio": list(speak_text("تم التعديل"))})
+
+    elif action == "input":
+        user_inputs[field] = text
+        preview = enhance_with_gpt(field, text)
+        user_inputs[field] = preview
         return jsonify({
-            "text": rephrased,
-            "audio": f"/audio/{field}.mp3"
+            "action": "هل ترغب بالاعتماد؟",
+            "text": preview,
+            "audio": list(speak_text(f"{preview}. هل ترغب بالاعتماد؟"))
         })
 
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-@app.route("/reply", methods=["POST"])
-def handle_reply():
-    field = request.json["field"]
-    action = request.json["action"]
-    if action == "redo":
-        session_data.pop(field, None)
-        return jsonify({"status": "redo"})
-    elif action.startswith("edit:"):
-        original = session_data.get(field, "")
-        edit_instruction = action.replace("edit:", "").strip()
-        new_text = enhance_with_gpt(field, original, edit_instruction)
-        session_data[field] = new_text
-        audio_reply = speak_text(new_text)
-        return jsonify({"text": new_text})
-    elif action == "approve":
-        return jsonify({"status": "approved"})
-    return jsonify({"error": "Invalid action"}), 400
-
-@app.route("/generate", methods=["POST"])
-def generate_and_send():
-    if not all(f in session_data for f in field_order):
-        return jsonify({"error": "Missing fields"}), 400
-
-    filename = "police_report.docx"
-    generate_report(session_data, filename)
-    send_email("📄 تقرير فحص", "تم إعداد التقرير وإرفاقه في البريد.", EMAIL_RECEIVER, filename)
-    return send_file(filename, as_attachment=True)
+    return jsonify({"error": "Unrecognized response."}), 400
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
