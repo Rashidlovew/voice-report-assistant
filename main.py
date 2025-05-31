@@ -119,6 +119,10 @@ def send_email(subject, body, to, attachment_path):
         smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
         smtp.send_message(msg)
 
+@app.route("/", methods=["GET"])
+def home():
+    return "✅ Voice Report Assistant is running."
+
 @app.route("/voice", methods=["POST"])
 def handle_voice():
     field = request.form["field"]
