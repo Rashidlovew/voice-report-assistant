@@ -5,7 +5,8 @@ import requests
 import tempfile
 from pydub import AudioSegment
 
-app = Flask(__name__)
+app = Flask(__name__, static_url_path='', static_folder='static')
+
 
 # API Keys from environment variables (Render)
 openai.api_key = os.environ["OPENAI_KEY"]
