@@ -97,7 +97,8 @@ def speak_text(text):
         "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
         headers={
             "xi-api-key": ELEVENLABS_KEY,
-            "Content-Type": "application/json"
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"  # ✅ Ensure browser-compatible format
         },
         json={
             "text": text,
