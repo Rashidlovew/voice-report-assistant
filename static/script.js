@@ -26,7 +26,10 @@ function speakNextPrompt() {
         listen();
       };
 
-      audio.play();
+      audio.play().catch(error => {
+        console.error("🔴 Failed to play audio:", error);
+        document.getElementById("status").innerText = "❌ لم يتم تشغيل الصوت.";
+      });
     });
 }
 
@@ -41,7 +44,7 @@ async function listen() {
   setTimeout(() => {
     mediaRecorder.stop();
     mediaRecorder.onstop = sendReply;
-  }, 5000); // Listen for 5 seconds
+  }, 5000); // Record for 5 seconds
 }
 
 async function sendReply() {
@@ -62,7 +65,10 @@ async function sendReply() {
     const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
     const audio = new Audio(URL.createObjectURL(audioBlob));
     audio.onended = speakNextPrompt;
-    audio.play();
+    audio.play().catch(error => {
+      console.error("🔴 Failed to play audio:", error);
+      document.getElementById("status").innerText = "❌ لم يتم تشغيل الرد الصوتي.";
+    });
   } else {
     speakNextPrompt();
   }
