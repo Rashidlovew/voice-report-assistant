@@ -1,129 +1,172 @@
 import os
 import tempfile
-from flask import Flask, request, send_from_directory, jsonify
-from flask_cors import CORS
-import openai
-import requests
+import json
+from flask import Flask, request, jsonify, send_file
+from openai import OpenAI
+from docxtpl import DocxTemplate
+from docx.shared import Pt
+from docx.oxml.ns import qn
 from pydub import AudioSegment
-from werkzeug.utils import secure_filename
+from email.message import EmailMessage
+import smtplib
+import requests
+
+# Configuration
+OPENAI_KEY = os.environ["OPENAI_KEY"]
+ELEVENLABS_KEY = os.environ["ELEVENLABS_KEY"]
+EMAIL_SENDER = os.environ["EMAIL_SENDER"]
+EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
+EMAIL_RECEIVER = os.environ.get("EMAIL_RECEIVER", "frnreports@gmail.com")
+TEMPLATE_FILE = "police_report_template.docx"
 
 app = Flask(__name__)
-CORS(app)
-openai.api_key = os.environ.get("OPENAI_KEY")
-ELEVENLABS_KEY = os.environ.get("ELEVENLABS_KEY")
+client = OpenAI(api_key=OPENAI_KEY)
 
-FIELD_PROMPTS = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+field_names_ar = {
+    "Date": "التاريخ",
+    "Briefing": "موجز الواقعة",
+    "LocationObservations": "معاينة الموقع",
+    "Examination": "نتيجة الفحص الفني",
+    "Outcomes": "النتيجة",
+    "TechincalOpinion": "الرأي الفني"
 }
 
-@app.route("/")
-def index():
-    return send_from_directory("static", "index.html")
+field_order = list(field_names_ar.keys())
+session_data = {}
 
-@app.route("/script.js")
-def script():
-    return send_from_directory("static", "script.js")
+def format_paragraph(p):
+    if p.runs:
+        run = p.runs[0]
+        run.font.name = 'Dubai'
+        run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Dubai')
+        run.font.size = Pt(13)
 
-@app.route("/voice", methods=["POST"])
-def handle_voice():
-    file = request.files['audio']
-    field = request.args.get("field") or ""
-    filename = secure_filename(file.filename)
+def format_report_doc(doc):
+    for para in doc.paragraphs:
+        format_paragraph(para)
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
-        file.save(temp_webm.name)
-        sound = AudioSegment.from_file(temp_webm.name)
-        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        sound.export(temp_wav.name, format="wav")
+def generate_report(data, file_path):
+    tpl = DocxTemplate(TEMPLATE_FILE)
+    tpl.render(data)
+    format_report_doc(tpl.docx)
+    tpl.save(file_path)
 
-    with open(temp_wav.name, "rb") as audio_file:
-        transcript = openai.audio.transcriptions.create(
-            model="whisper-1",
+def transcribe_audio(file_path):
+    audio = AudioSegment.from_file(file_path)
+    wav_path = tempfile.mktemp(suffix=".wav")
+    audio.export(wav_path, format="wav")
+    with open(wav_path, "rb") as audio_file:
+        transcript = client.audio.transcriptions.create(
             file=audio_file,
+            model="whisper-1",
             language="ar"
-        ).text
+        )
+    return transcript.text
 
-    gpt_prompt = f"""
-    أعد صياغة النص التالي بطريقة مهنية لتضمينه في تقرير فني للشرطة مع الحفاظ على المعنى:
-
-    "{transcript}"
-    """
-    completion = openai.chat.completions.create(
+def enhance_with_gpt(field_name, user_input, edit_instruction=None):
+    if edit_instruction:
+        prompt = (
+            f"لدي النص التالي المرتبط بـ {field_names_ar.get(field_name)}:\n\n"
+            f"{user_input}\n\n"
+            f"يرجى تنفيذ التعديلات التالية فقط دون كتابة التعليمات نفسها:\n"
+            f"{edit_instruction}\n\n"
+            f"🔁 الناتج يجب أن يكون بصيغة رسمية وعربية فصحى، يحافظ على المعنى الأصلي، "
+            f"ولا يتضمن الكلمات مثل 'أضف' أو 'احذف' أو 'استبدل'."
+        )
+    elif field_name == "Date":
+        prompt = (
+            f"أعد كتابة التاريخ الوارد بصيغة رسمية بالتنسيق التالي فقط (مثال: 20/مايو/2025)، "
+            f"بدون إضافة أي شيء آخر. النص:\n\n{user_input}"
+        )
+    else:
+        prompt = (
+            f"أعد صياغة النص التالي ({field_names_ar.get(field_name)}) بلغة عربية فصحى ورسمية، "
+            f"بدون تغيير المعنى وبدون أي إضافات أو مشاعر:\n\n{user_input}"
+        )
+    response = client.chat.completions.create(
         model="gpt-4",
-        messages=[
-            {"role": "user", "content": gpt_prompt}
-        ]
+        messages=[{"role": "user", "content": prompt}]
     )
-    rephrased = completion.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
 
-    # TTS with ElevenLabs
-    tts_response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/AZnzlk1XvdvUeBnXmlld/stream",
+def speak_text(text):
+    response = requests.post(
+        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
         headers={
             "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json"
         },
         json={
-            "text": rephrased,
-            "voice_settings": {"stability": 0.3, "similarity_boost": 0.8}
+            "text": text,
+            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
         }
     )
+    return response.content
 
-    audio_path = f"static/reply_{field}.mp3"
-    with open(audio_path, "wb") as f:
-        f.write(tts_response.content)
+def send_email(subject, body, to, attachment_path):
+    msg = EmailMessage()
+    msg["Subject"] = subject
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = to
+    msg.set_content(body)
+    with open(attachment_path, "rb") as f:
+        msg.add_attachment(
+            f.read(), maintype="application",
+            subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+            filename=os.path.basename(attachment_path)
+        )
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        smtp.send_message(msg)
 
-    return jsonify({
-        "preview": rephrased,
-        "audio_url": f"/reply_{field}.mp3"
-    })
+@app.route("/voice", methods=["POST"])
+def handle_voice():
+    field = request.form["field"]
+    audio_file = request.files["audio"]
+    tmp_path = tempfile.mktemp(suffix=".webm")
+    audio_file.save(tmp_path)
+
+    try:
+        raw_text = transcribe_audio(tmp_path)
+        rephrased = enhance_with_gpt(field, raw_text)
+        audio_reply = speak_text(rephrased)
+        session_data[field] = rephrased
+
+        return jsonify({
+            "text": rephrased,
+            "audio": f"/audio/{field}.mp3"
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/reply", methods=["POST"])
 def handle_reply():
-    file = request.files['audio']
-    filename = secure_filename(file.filename)
+    field = request.json["field"]
+    action = request.json["action"]
+    if action == "redo":
+        session_data.pop(field, None)
+        return jsonify({"status": "redo"})
+    elif action.startswith("edit:"):
+        original = session_data.get(field, "")
+        edit_instruction = action.replace("edit:", "").strip()
+        new_text = enhance_with_gpt(field, original, edit_instruction)
+        session_data[field] = new_text
+        audio_reply = speak_text(new_text)
+        return jsonify({"text": new_text})
+    elif action == "approve":
+        return jsonify({"status": "approved"})
+    return jsonify({"error": "Invalid action"}), 400
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
-        file.save(temp_webm.name)
-        sound = AudioSegment.from_file(temp_webm.name)
-        temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
-        sound.export(temp_wav.name, format="wav")
+@app.route("/generate", methods=["POST"])
+def generate_and_send():
+    if not all(f in session_data for f in field_order):
+        return jsonify({"error": "Missing fields"}), 400
 
-    with open(temp_wav.name, "rb") as audio_file:
-        transcript = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=audio_file,
-            language="ar"
-        ).text.strip()
-
-    classify_prompt = f"""
-    هل الجملة التالية تعني موافقة، تعديل، أم رفض؟ الجواب فقط بكلمة واحدة:
-    الجملة: "{transcript}"
-    الإجابة فقط: موافقة أو تعديل أو رفض
-    """
-    classification = openai.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": classify_prompt}]
-    ).choices[0].message.content.strip()
-
-    if "موافقة" in classification:
-        return jsonify({"action": "accept"})
-    elif "رفض" in classification:
-        return jsonify({"action": "redo"})
-    elif "تعديل" in classification or "أضف" in transcript:
-        edit_prompt = f"عدل النص السابق بناءً على هذا التوجيه: {transcript}"
-        edited = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[{"role": "user", "content": edit_prompt}]
-        ).choices[0].message.content.strip()
-        return jsonify({"action": "edit", "modified_text": edited})
-
-    return jsonify({"action": "unknown"})
+    filename = "police_report.docx"
+    generate_report(session_data, filename)
+    send_email("📄 تقرير فحص", "تم إعداد التقرير وإرفاقه في البريد.", EMAIL_RECEIVER, filename)
+    return send_file(filename, as_attachment=True)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
