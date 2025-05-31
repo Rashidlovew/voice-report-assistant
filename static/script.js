@@ -1,99 +1,65 @@
-let mediaRecorder, audioChunks = [];
+let mediaRecorder;
+let audioChunks = [];
+let currentFieldIndex = 0;
 
-function logStatus(msg) {
-  document.getElementById("status").innerText = msg;
-  console.log("🔊", msg);
-}
+const fields = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
 
 function startConversation() {
-  fetch("/start", { method: "POST" }).then(() => {
-    speakNextPrompt();
-  });
+    fetch("/start", { method: "POST" })
+        .then(res => res.json())
+        .then(data => {
+            document.getElementById("prompt").innerText = `🎧 استمع إلى: ${data.prompt}`;
+            document.getElementById("transcript").placeholder = data.prompt;
+            playAudio(data.audio);
+        });
 }
 
-function speakNextPrompt() {
-  fetch("/fieldPrompt")
-    .then(res => res.json())
-    .then(data => {
-      if (data.done) {
-        logStatus("✅ تم إرسال التقرير");
-        return;
-      }
-
-      const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
-      const audio = new Audio(URL.createObjectURL(audioBlob));
-
-      document.getElementById("responseText").value = data.prompt;
-      logStatus("🎧 استمع إلى: " + data.prompt);
-
-      audio.onended = () => {
-        logStatus("🎙️ جاري التسجيل...");
-        listen();
-      };
-
-      audio.play().catch(error => {
-        console.error("❌ Audio playback error:", error);
-        logStatus("❌ لم يتم تشغيل الصوت.");
-      });
+function playAudio(audioBytes) {
+    const blob = new Blob([new Uint8Array(audioBytes)], { type: "audio/mpeg" }); // ✅ Fix: explicitly declare MP3
+    const url = URL.createObjectURL(blob);
+    const audio = new Audio(url);
+    audio.play().catch(err => {
+        console.error("Audio playback error:", err);
+        document.getElementById("prompt").innerHTML = "❌ لم يتم تشغيل الصوت.";
     });
 }
 
-function listen() {
-  audioChunks = [];
+function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+        mediaRecorder = new MediaRecorder(stream);
+        mediaRecorder.start();
+        audioChunks = [];
 
-  navigator.mediaDevices.getUserMedia({ audio: true })
-    .then(stream => {
-      logStatus("🎙️ بدأ التسجيل...");
-      mediaRecorder = new MediaRecorder(stream);
-      mediaRecorder.start();
+        mediaRecorder.addEventListener("dataavailable", event => {
+            audioChunks.push(event.data);
+        });
 
-      mediaRecorder.ondataavailable = e => {
-        console.log("📥 صوت تم تسجيله:", e.data);
-        audioChunks.push(e.data);
-      };
+        mediaRecorder.addEventListener("stop", () => {
+            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            const formData = new FormData();
+            formData.append("audio", audioBlob);
 
-      mediaRecorder.onstop = () => {
-        console.log("🛑 تم إيقاف التسجيل، عدد المقاطع:", audioChunks.length);
-        if (audioChunks.length === 0) {
-          logStatus("⚠️ لا يوجد صوت مسجل.");
-        } else {
-          sendReply();
-        }
-      };
+            fetch("/listen", {
+                method: "POST",
+                body: formData
+            })
+                .then(res => res.json())
+                .then(data => {
+                    document.getElementById("prompt").innerText = `🎧 استمع إلى: ${data.prompt}`;
+                    document.getElementById("transcript").value = data.text;
+                    playAudio(data.audio);
+                });
+        });
 
-      setTimeout(() => {
-        mediaRecorder.stop();
-      }, 5000);
-    })
-    .catch(err => {
-      console.error("🎤 Microphone error:", err);
-      logStatus("❌ لم يتم الوصول إلى المايكروفون!");
+        setTimeout(() => {
+            mediaRecorder.stop();
+        }, 7000); // Adjust as needed
     });
 }
 
-async function sendReply() {
-  const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-  const formData = new FormData();
-  formData.append("audio", audioBlob);
+document.addEventListener("DOMContentLoaded", () => {
+    document.getElementById("startButton").addEventListener("click", startConversation);
 
-  const res = await fetch("/listen", {
-    method: "POST",
-    body: formData
-  });
-
-  const data = await res.json();
-  document.getElementById("responseText").value = data.text || "";
-  logStatus("🔊 " + data.action);
-
-  if (data.audio) {
-    const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
-    const audio = new Audio(URL.createObjectURL(audioBlob));
-    audio.onended = speakNextPrompt;
-    audio.play().catch(error => {
-      console.error("🔴 Failed to play audio:", error);
-      logStatus("❌ لم يتم تشغيل الرد الصوتي.");
-    });
-  } else {
-    speakNextPrompt();
-  }
-}
+    const transcriptBox = document.getElementById("transcript");
+    transcriptBox.addEventListener("focus", startRecording);
+});
