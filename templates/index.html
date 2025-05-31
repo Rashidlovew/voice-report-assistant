@@ -3,11 +3,18 @@
 <head>
   <meta charset="UTF-8" />
   <title>مساعد إعداد التقرير الصوتي</title>
+  <style>
+    body { font-family: Arial; text-align: center; padding: 30px; direction: rtl; }
+    textarea { width: 80%; height: 100px; }
+    button { font-size: 18px; padding: 10px 20px; margin: 10px; }
+    #status { margin: 15px; font-size: 18px; }
+  </style>
 </head>
 <body>
   <h2>🎙️ مساعد إعداد تقرير الفحص</h2>
-  <p id="status">⬇️ جاري التحميل...</p>
-  <textarea id="responseText" rows="6" cols="60" readonly></textarea>
+  <button onclick="startConversation()">🎤 ابدأ المحادثة</button>
+  <p id="status">اضغط على الزر للبدء.</p>
+  <textarea id="responseText" readonly></textarea>
 
   <script src="/static/script.js"></script>
 </body>
