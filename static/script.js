@@ -1,129 +1,71 @@
 let mediaRecorder;
 let audioChunks = [];
-let secondRecorder;
-let secondChunks = [];
-const recordBtn = document.getElementById('recordBtn');
-const stopBtn = document.getElementById('stopBtn');
-const responseAudio = document.getElementById('responseAudio');
-const status = document.getElementById('status');
-const fieldLabel = document.getElementById('fieldLabel');
 
-const fields = [
-    "Date",
-    "Briefing",
-    "LocationObservations",
-    "Examination",
-    "Outcomes",
-    "TechincalOpinion"
-];
+document.getElementById("recordBtn").onclick = async () => {
+  audioChunks = [];
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  mediaRecorder.start();
+  document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
 
-const fieldPrompts = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
-};
+  mediaRecorder.ondataavailable = e => {
+    audioChunks.push(e.data);
+  };
 
-let currentStep = 0;
-let fieldData = {};
-let lastPreview = "";
-
-function updateFieldLabel() {
-    if (currentStep < fields.length) {
-        const fieldKey = fields[currentStep];
-        fieldLabel.textContent = fieldPrompts[fieldKey];
-    } else {
-        fieldLabel.textContent = "✅ تم الانتهاء من جميع الحقول.";
-        status.textContent = "📄 جاري إعداد التقرير...";
-        // Later: POST to /generate_report
-    }
-}
-
-async function sendAudio(blob, route) {
+  mediaRecorder.onstop = async () => {
+    const field = document.getElementById("field").value;
+    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
     const formData = new FormData();
-    formData.append('audio', blob, 'input.webm');
-    const response = await fetch(route, {
-        method: 'POST',
-        body: formData
-    });
-    return await response.json();
-}
+    formData.append("audio", audioBlob);
+    formData.append("field", field);
 
-function autoListenForReply() {
-    status.textContent = "🎧 استمع الآن لردك...";
-    secondChunks = [];
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-        secondRecorder = new MediaRecorder(stream);
-        secondRecorder.start();
-        secondRecorder.ondataavailable = e => secondChunks.push(e.data);
-        setTimeout(() => {
-            secondRecorder.stop();
-        }, 4000);
-        secondRecorder.onstop = async () => {
-            const replyBlob = new Blob(secondChunks, { type: 'audio/webm' });
-            const result = await sendAudio(replyBlob, "/reply");
+    document.getElementById("status").innerText = "🔁 جاري المعالجة...";
 
-            if (result.action === "accept") {
-                const fieldKey = fields[currentStep];
-                fieldData[fieldKey] = lastPreview;
-                currentStep++;
-                updateFieldLabel();
-            } else if (result.action === "redo") {
-                status.textContent = "🔁 يرجى إعادة التسجيل لنفس الحقل...";
-            } else if (result.action === "edit") {
-                lastPreview = result.modified_text;
-                const fieldKey = fields[currentStep];
-                fieldData[fieldKey] = lastPreview;
-                currentStep++;
-                updateFieldLabel();
-            } else {
-                status.textContent = "❓ لم يتم فهم الرد.";
-            }
-        };
-    });
-}
+    const response = await fetch("/voice", { method: "POST", body: formData });
+    const result = await response.json();
+    document.getElementById("responseText").value = result.text;
+    document.getElementById("status").innerText = "✅ تمت المعالجة";
+  };
 
-recordBtn.onclick = async () => {
-    audioChunks = [];
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    mediaRecorder.start();
-
-    mediaRecorder.ondataavailable = e => {
-        audioChunks.push(e.data);
-    };
-
-    mediaRecorder.onstop = async () => {
-        const blob = new Blob(audioChunks, { type: 'audio/webm' });
-        const fieldKey = fields[currentStep];
-        const result = await sendAudio(blob, `/voice?field=${fieldKey}`);
-
-        if (result.audio_url && result.preview) {
-            responseAudio.src = result.audio_url;
-            responseAudio.play();
-            lastPreview = result.preview;
-            status.textContent = "✅ النص المعاد صياغته: " + lastPreview;
-
-            responseAudio.onended = () => {
-                autoListenForReply();
-            };
-        } else {
-            status.textContent = "❌ حدث خطأ";
-        }
-    };
-
-    recordBtn.disabled = true;
-    stopBtn.disabled = false;
-    status.textContent = "🔴 جاري التسجيل...";
+  setTimeout(() => mediaRecorder.stop(), 5000); // Record for 5 seconds
 };
 
-stopBtn.onclick = () => {
-    mediaRecorder.stop();
-    recordBtn.disabled = false;
-    stopBtn.disabled = true;
-    status.textContent = "⏹️ توقف التسجيل";
-};
+function sendReply(action) {
+  const field = document.getElementById("field").value;
+  const payload = {
+    field,
+    action
+  };
+  fetch("/reply", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+  }).then(r => r.json()).then(res => {
+    if (res.text) {
+      document.getElementById("responseText").value = res.text;
+    }
+    document.getElementById("status").innerText = "✅ تم تحديث النص";
+  });
+}
 
-updateFieldLabel();
+function editText() {
+  const edit = prompt("اكتب التعديل المطلوب:");
+  if (edit) {
+    sendReply("edit:" + edit);
+  }
+}
+
+function generateReport() {
+  fetch("/generate", { method: "POST" })
+    .then(res => res.blob())
+    .then(blob => {
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "police_report.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      document.getElementById("status").innerText = "📩 تم إنشاء التقرير";
+    });
+}
