@@ -1,7 +1,7 @@
 import os
 import tempfile
 import json
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, render_template
 from openai import OpenAI
 from docxtpl import DocxTemplate
 from docx.shared import Pt
@@ -120,8 +120,8 @@ def send_email(subject, body, to, attachment_path):
         smtp.send_message(msg)
 
 @app.route("/", methods=["GET"])
-def home():
-    return "✅ Voice Report Assistant is running."
+def index():
+    return render_template("index.html")
 
 @app.route("/voice", methods=["POST"])
 def handle_voice():
