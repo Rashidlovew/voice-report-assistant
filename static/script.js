@@ -1,5 +1,10 @@
 let mediaRecorder, audioChunks = [];
 
+function logStatus(msg) {
+  document.getElementById("status").innerText = msg;
+  console.log("🔊", msg);
+}
+
 function startConversation() {
   fetch("/start", { method: "POST" }).then(() => {
     speakNextPrompt();
@@ -11,7 +16,7 @@ function speakNextPrompt() {
     .then(res => res.json())
     .then(data => {
       if (data.done) {
-        document.getElementById("status").innerText = "✅ تم إرسال التقرير";
+        logStatus("✅ تم إرسال التقرير");
         return;
       }
 
@@ -19,38 +24,50 @@ function speakNextPrompt() {
       const audio = new Audio(URL.createObjectURL(audioBlob));
 
       document.getElementById("responseText").value = data.prompt;
-      document.getElementById("status").innerText = "🎧 استمع إلى: " + data.prompt;
+      logStatus("🎧 استمع إلى: " + data.prompt);
 
       audio.onended = () => {
-        document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
+        logStatus("🎙️ جاري التسجيل...");
         listen();
       };
 
       audio.play().catch(error => {
-        console.error("🔴 Failed to play audio:", error);
-        document.getElementById("status").innerText = "❌ لم يتم تشغيل الصوت.";
+        console.error("❌ Audio playback error:", error);
+        logStatus("❌ لم يتم تشغيل الصوت.");
       });
     });
 }
 
 function listen() {
   audioChunks = [];
+
   navigator.mediaDevices.getUserMedia({ audio: true })
     .then(stream => {
-      document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
+      logStatus("🎙️ بدأ التسجيل...");
       mediaRecorder = new MediaRecorder(stream);
       mediaRecorder.start();
 
-      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.ondataavailable = e => {
+        console.log("📥 صوت تم تسجيله:", e.data);
+        audioChunks.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        console.log("🛑 تم إيقاف التسجيل، عدد المقاطع:", audioChunks.length);
+        if (audioChunks.length === 0) {
+          logStatus("⚠️ لا يوجد صوت مسجل.");
+        } else {
+          sendReply();
+        }
+      };
 
       setTimeout(() => {
         mediaRecorder.stop();
-        mediaRecorder.onstop = sendReply;
       }, 5000);
     })
     .catch(err => {
       console.error("🎤 Microphone error:", err);
-      document.getElementById("status").innerText = "❌ لم يتم تشغيل المايك!";
+      logStatus("❌ لم يتم الوصول إلى المايكروفون!");
     });
 }
 
@@ -66,7 +83,7 @@ async function sendReply() {
 
   const data = await res.json();
   document.getElementById("responseText").value = data.text || "";
-  document.getElementById("status").innerText = "🔊 " + data.action;
+  logStatus("🔊 " + data.action);
 
   if (data.audio) {
     const audioBlob = new Blob([new Uint8Array(data.audio)], { type: "audio/mpeg" });
@@ -74,7 +91,7 @@ async function sendReply() {
     audio.onended = speakNextPrompt;
     audio.play().catch(error => {
       console.error("🔴 Failed to play audio:", error);
-      document.getElementById("status").innerText = "❌ لم يتم تشغيل الرد الصوتي.";
+      logStatus("❌ لم يتم تشغيل الرد الصوتي.");
     });
   } else {
     speakNextPrompt();
