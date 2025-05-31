@@ -93,6 +93,7 @@ def enhance_with_gpt(field_name, user_input, edit_instruction=None):
     return response.choices[0].message.content.strip()
 
 def speak_text(text):
+    # 1. Get ElevenLabs stream
     response = requests.post(
         "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
         headers={
@@ -103,10 +104,23 @@ def speak_text(text):
         json={
             "text": text,
             "voice_settings": {"stability": 0.5, "similarity_boost": 0.75},
-            "output_format": "mp3_44100_128"  # ✅ Critical fix for browser compatibility
+            "output_format": "mp3_44100_128"
         }
     )
-    return response.content
+
+    # 2. Save raw stream to temp file
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
+        f.write(response.content)
+        temp_mp3_path = f.name
+
+    # 3. Reprocess with pydub to clean MP3 format
+    audio = AudioSegment.from_file(temp_mp3_path)
+    clean_mp3_path = tempfile.mktemp(suffix=".mp3")
+    audio.export(clean_mp3_path, format="mp3")
+
+    # 4. Return final playable audio bytes
+    with open(clean_mp3_path, "rb") as f:
+        return f.read()
 
 def send_email(subject, body, to, attachment_path):
     msg = EmailMessage()
