@@ -22,7 +22,7 @@ function speakNextPrompt() {
       document.getElementById("status").innerText = "🎧 استمع إلى: " + data.prompt;
 
       audio.onended = () => {
-        document.getElementById("status").innerText = "🎙️ جاري الاستماع لردك...";
+        document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
         listen();
       };
 
@@ -33,18 +33,25 @@ function speakNextPrompt() {
     });
 }
 
-async function listen() {
+function listen() {
   audioChunks = [];
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  mediaRecorder.start();
+  navigator.mediaDevices.getUserMedia({ audio: true })
+    .then(stream => {
+      document.getElementById("status").innerText = "🎙️ جاري التسجيل...";
+      mediaRecorder = new MediaRecorder(stream);
+      mediaRecorder.start();
 
-  mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+      mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
 
-  setTimeout(() => {
-    mediaRecorder.stop();
-    mediaRecorder.onstop = sendReply;
-  }, 5000); // Record for 5 seconds
+      setTimeout(() => {
+        mediaRecorder.stop();
+        mediaRecorder.onstop = sendReply;
+      }, 5000);
+    })
+    .catch(err => {
+      console.error("🎤 Microphone error:", err);
+      document.getElementById("status").innerText = "❌ لم يتم تشغيل المايك!";
+    });
 }
 
 async function sendReply() {
