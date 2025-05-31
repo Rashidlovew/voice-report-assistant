@@ -4,28 +4,29 @@ import os
 import requests
 import tempfile
 from pydub import AudioSegment
+import sys  # for printing errors to stderr
 
-# Configure Flask to serve static files from /static
+# Configure Flask to serve static files
 app = Flask(__name__, static_url_path='', static_folder='static')
 
 # Load API keys from environment variables
 openai.api_key = os.environ["OPENAI_KEY"]
 ELEVENLABS_API_KEY = os.environ["ELEVENLABS_KEY"]
 
-# Serve index.html from /static
+# Serve the HTML page
 @app.route('/')
 def index():
     return app.send_static_file('index.html')
 
 
-# Function to transcribe audio using Whisper
+# Transcribe Arabic audio using Whisper
 def transcribe_audio(file_path):
     with open(file_path, "rb") as audio_file:
         transcript = openai.Audio.transcribe("whisper-1", audio_file, language="ar")
     return transcript["text"]
 
 
-# Function to rephrase the input using GPT-4
+# Rephrase Arabic text using GPT-4
 def rephrase_with_gpt(text):
     prompt = f"أعد صياغة هذا النص ليكون مناسبًا لتقرير فحص جنائي دون إضافة مبالغات: {text}"
     response = openai.ChatCompletion.create(
@@ -35,13 +36,13 @@ def rephrase_with_gpt(text):
     return response.choices[0].message.content.strip()
 
 
-# Function to generate Arabic voice using ElevenLabs
+# Convert Arabic text to voice using ElevenLabs
 def generate_voice(text):
     headers = {
         "xi-api-key": ELEVENLABS_API_KEY,
         "Content-Type": "application/json"
     }
-    voice_id = "EXAVITQu4vr4xnSDxMaL"  # Replace with your custom Arabic voice ID if needed
+    voice_id = "EXAVITQu4vr4xnSDxMaL"  # Use your Arabic voice ID here if needed
     url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
 
     payload = {
@@ -60,45 +61,40 @@ def generate_voice(text):
     return temp_mp3.name
 
 
-# Main route to handle uploaded audio and respond with Arabic voice
+# Handle incoming audio and respond with Arabic speech
 @app.route('/voice', methods=['POST'])
 def handle_voice():
     try:
         if 'audio' not in request.files:
-            print("🚫 No audio file in request.")
+            print("🚫 No audio file in request.", file=sys.stderr, flush=True)
             return jsonify({"error": "No audio file received"}), 400
 
-        # Save uploaded audio
         audio_file = request.files['audio']
         temp_input = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
         audio_file.save(temp_input.name)
-        print("🎤 Audio file saved:", temp_input.name)
+        print("🎤 Audio file saved:", temp_input.name, file=sys.stderr, flush=True)
 
-        # Convert audio to WAV format
         audio = AudioSegment.from_file(temp_input.name)
         temp_wav = tempfile.NamedTemporaryFile(delete=False, suffix=".wav")
         audio.export(temp_wav.name, format="wav")
-        print("🔄 Converted to WAV:", temp_wav.name)
+        print("🔄 Converted to WAV:", temp_wav.name, file=sys.stderr, flush=True)
 
-        # Transcribe using Whisper
         transcript = transcribe_audio(temp_wav.name)
-        print("📝 Transcript:", transcript)
+        print("📝 Transcript:", transcript, file=sys.stderr, flush=True)
 
-        # Rephrase with GPT-4
         rephrased = rephrase_with_gpt(transcript)
-        print("✍️ Rephrased:", rephrased)
+        print("✍️ Rephrased:", rephrased, file=sys.stderr, flush=True)
 
-        # Convert to Arabic voice
         voice_path = generate_voice(rephrased)
-        print("🔊 Voice path:", voice_path)
+        print("🔊 Voice path:", voice_path, file=sys.stderr, flush=True)
 
         return send_file(voice_path, mimetype="audio/mpeg")
 
     except Exception as e:
-        print(f"💥 ERROR in /voice: {e}")
+        print(f"💥 ERROR in /voice: {e}", file=sys.stderr, flush=True)
         return jsonify({"error": str(e)}), 500
 
 
-# Start Flask server on Render using PORT environment variable
+# Start the app on the correct port for Render
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
