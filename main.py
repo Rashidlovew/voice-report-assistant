@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load API keys
+# Environment keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -24,24 +24,22 @@ def index():
 def submit_audio():
     try:
         data = request.get_json()
-        audio_data = data.get("audio", "")
+        audio_data = data["audio"]
         if "," in audio_data:
             audio_base64 = audio_data.split(",")[1]
         else:
             return jsonify({"error": "Invalid audio format"}), 400
 
-        # Decode and save temporary audio file
         audio_bytes = base64.b64decode(audio_base64)
+
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
             temp_file.write(audio_bytes)
             temp_path = temp_file.name
 
-        # Convert to WAV
         wav_path = temp_path.replace(".webm", ".wav")
         sound = AudioSegment.from_file(temp_path)
         sound.export(wav_path, format="wav")
 
-        # Transcribe with Whisper
         with open(wav_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
@@ -49,24 +47,23 @@ def submit_audio():
                 response_format="text"
             )
 
-        user_text = transcript.strip()
-
-        # AI reply
-        prompt = f"لدي النص التالي كملاحظة صوتية من محقق جنائي: '{user_text}'. من فضلك أعد صياغته بطريقة رسمية ومهنية كجزء من تقرير شرطة."
+        # Send text to GPT-4 for enhancement
         gpt_response = client.chat.completions.create(
             model="gpt-4",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7
+            messages=[
+                {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
+                {"role": "user", "content": f"النص المُرسل: {transcript.text.strip()}"}
+            ]
         )
-        ai_text = gpt_response.choices[0].message.content.strip()
+        enhanced_text = gpt_response.choices[0].message.content.strip()
 
-        # Generate voice
-        audio = speak_text(ai_text)
+        # Stream audio response from ElevenLabs
+        audio_mp3 = stream_speech(enhanced_text)
 
         return jsonify({
-            "transcript": user_text,
-            "response": ai_text,
-            "audio": base64.b64encode(audio).decode()
+            "transcript": transcript.text.strip(),
+            "response": enhanced_text,
+            "audio": base64.b64encode(audio_mp3).decode("utf-8")
         })
 
     except Exception as e:
@@ -75,13 +72,13 @@ def submit_audio():
 @app.route("/fieldPrompt")
 def field_prompt():
     text = request.args.get("text", "مرحباً، كيف حالك اليوم؟")
-    audio = speak_text(text)
+    audio = stream_speech(text)
     return jsonify({
         "prompt": text,
         "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
     })
 
-def speak_text(text):
+def stream_speech(text):
     response = requests.post(
         "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
         headers={
@@ -91,8 +88,10 @@ def speak_text(text):
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.4, "similarity_boost": 0.75},
-            "output_format": "mp3_44100_128"
+            "voice_settings": {
+                "stability": 0.3,
+                "similarity_boost": 0.75
+            }
         }
     )
     return response.content
