@@ -85,11 +85,16 @@ def speak_text(text):
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.4, "similarity_boost": 0.75},
-            "output_format": "mp3_44100_128"
+            "voice_settings": {
+                "stability": 0.4,
+                "similarity_boost": 0.75
+            },
+            "model_id": "eleven_multilingual_v2",
+            "output_format": "mp3_44100_128"  # ✅ MP3 compatible format
         }
     )
     return response.content
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
