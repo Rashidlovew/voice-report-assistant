@@ -47,7 +47,6 @@ def submit_audio():
                 response_format="text"
             )
 
-        # Send text to GPT-4 for enhancement
         gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
@@ -57,7 +56,6 @@ def submit_audio():
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
 
-        # Stream audio response from ElevenLabs
         audio_mp3 = stream_speech(enhanced_text)
 
         return jsonify({
@@ -67,6 +65,7 @@ def submit_audio():
         })
 
     except Exception as e:
+        print("🔥 INTERNAL SERVER ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.route("/fieldPrompt")
