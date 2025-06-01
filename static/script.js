@@ -6,13 +6,23 @@ const startButton = document.getElementById("start-button");
 const statusText = document.getElementById("status");
 const responseArea = document.getElementById("response");
 
-function playAudioBase64(base64Data) {
-    const audio = new Audio();
-    audio.src = "data:audio/mpeg;base64," + base64Data;
-    audio.play().catch(err => {
-        console.error("🔴 Audio playback failed:", err);
-        statusText.innerText = "❗ الصوت غير مدعوم في هذا المتصفح. جرّب Chrome.";
-    });
+function playAudioFromBase64(base64Data) {
+    try {
+        const audioElement = document.createElement("audio");
+        audioElement.src = "data:audio/mpeg;base64," + base64Data;
+        audioElement.type = "audio/mpeg";
+        audioElement.autoplay = true;
+
+        // Optional: fallback if audio fails
+        audioElement.onerror = () => {
+            statusText.innerHTML = "❗ الصوت غير مدعوم في هذا المتصفح. جرّب Chrome.";
+        };
+
+        document.body.appendChild(audioElement); // Append to trigger autoplay in some browsers
+    } catch (e) {
+        console.error("Failed to play audio:", e);
+        statusText.innerText = "❗ حدث خطأ في تشغيل الصوت.";
+    }
 }
 
 startButton.addEventListener("click", async () => {
@@ -40,20 +50,37 @@ startButton.addEventListener("click", async () => {
                     });
 
                     const result = await response.json();
-                    responseArea.value += "\\n🧠 أنت: " + result.transcript + "\\n🤖 AI: " + result.response;
-                    statusText.innerText = "🤖 AI: " + result.response;
+                    console.log("AI Response:", result);
 
-                    playAudioBase64(result.audio);
+                    if (result.error) {
+                        statusText.innerText = "❗ " + result.error;
+                        return;
+                    }
+
+                    // Show text
+                    responseArea.value += `\n🧠 AI: ${result.response}`;
+                    statusText.innerHTML = `🧠 AI: ${result.response}`;
+
+                    // Play voice
+                    if (result.audio) {
+                        playAudioFromBase64(result.audio);
+                    } else {
+                        console.warn("No audio returned.");
+                    }
+
+                    // Auto-record again
+                    setTimeout(() => startButton.click(), 1000);
                 } catch (err) {
-                    statusText.innerText = "❌ حدث خطأ أثناء المعالجة.";
+                    console.error("Error:", err);
+                    statusText.innerText = "❌ خطأ في الاتصال بالخادم.";
                 }
             };
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 جاري التسجيل... تحدث الآن.";
-        startButton.innerText = "⏹️ أوقف التسجيل";
+        statusText.innerText = "🎤 جاري التسجيل...";
+        startButton.innerText = "⏹️ إيقاف التسجيل";
         isRecording = true;
     } else {
         mediaRecorder.stop();
@@ -61,10 +88,3 @@ startButton.addEventListener("click", async () => {
         isRecording = false;
     }
 });
-
-window.onload = async () => {
-    const response = await fetch("/fieldPrompt?text=مرحباً، كيف حالك اليوم؟");
-    const result = await response.json();
-    statusText.innerText = "🤖 AI: " + result.prompt;
-    playAudioBase64(result.audio);
-};
