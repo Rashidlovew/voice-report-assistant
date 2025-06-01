@@ -6,23 +6,6 @@ const startButton = document.getElementById("start-button");
 const statusText = document.getElementById("status");
 const responseArea = document.getElementById("response");
 
-// Automatically speak welcome message on load
-window.onload = async () => {
-    try {
-        const res = await fetch("/fieldPrompt?text=مرحباً، كيف حالك اليوم؟");
-        const data = await res.json();
-        statusText.innerText = "🤖 AI: " + data.prompt;
-        const audio = new Audio(data.audio);
-        audio.play();
-
-        audio.onended = () => {
-            startButton.click(); // Start recording after greeting
-        };
-    } catch (err) {
-        statusText.innerText = "❌ Failed to load welcome message.";
-    }
-};
-
 startButton.addEventListener("click", async () => {
     if (!isRecording) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -48,24 +31,27 @@ startButton.addEventListener("click", async () => {
                     });
 
                     const result = await response.json();
-                    responseArea.value += "👤 أنت: " + result.transcript + "\n\n";
-                    responseArea.value += "🤖 AI: " + result.response + "\n\n";
-                    statusText.innerText = "🤖 AI: " + result.response;
+                    if (result.error) {
+                        statusText.innerText = "❌ Error: " + result.error;
+                        return;
+                    }
+
+                    responseArea.value += `🧍‍♂️ أنت: ${result.transcript}\n🤖 AI: ${result.response}\n`;
+                    statusText.innerText = `AI: ${result.response}`;
 
                     const audio = new Audio("data:audio/mp3;base64," + result.audio);
                     audio.play();
 
-                    // Auto-record after voice reply finishes
                     audio.onended = () => startButton.click();
                 } catch (err) {
-                    statusText.innerText = "❌ Error processing audio.";
+                    statusText.innerText = "❌ Failed to submit audio.";
                 }
             };
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 Listening... please speak.";
+        statusText.innerText = "🎤 Recording... please speak.";
         startButton.innerText = "⏹️ Stop";
         isRecording = true;
     } else {
