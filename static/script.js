@@ -17,27 +17,24 @@ startButton.addEventListener("click", async () => {
         });
 
         mediaRecorder.addEventListener("stop", async () => {
-            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+            const audioBlob = new Blob(audioChunks);
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const base64Audio = reader.result;
                 try {
                     const response = await fetch("/submitAudio", {
                         method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
+                        headers: { "Content-Type": "application/json" },
                         body: JSON.stringify({ audio: base64Audio })
                     });
-
                     const result = await response.json();
 
                     if (result.error) {
-                        statusText.innerText = "❌ Server error: " + result.error;
+                        statusText.innerText = "❌ خطأ: " + result.error;
                         return;
                     }
 
-                    responseArea.value = result.transcript + "\n\n" + result.response;
+                    responseArea.value = "🗣️ " + result.transcript + "\n\n🤖 " + result.response;
                     statusText.innerText = "🔊 AI: " + result.response;
 
                     const audio = new Audio("data:audio/mp3;base64," + result.audio);
@@ -45,19 +42,19 @@ startButton.addEventListener("click", async () => {
 
                     audio.onended = () => startButton.click();
                 } catch (err) {
-                    statusText.innerText = "❌ Network error.";
+                    statusText.innerText = "❌ خطأ في معالجة الصوت.";
                 }
             };
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 Recording... please speak.";
-        startButton.innerText = "⏹️ Stop";
+        statusText.innerText = "🎤 تسجيل... تفضل بالكلام.";
+        startButton.innerText = "⏹️ إيقاف";
         isRecording = true;
     } else {
         mediaRecorder.stop();
-        startButton.innerText = "🎙️ Start Talking";
+        startButton.innerText = "🎙️ ابدأ المحادثة";
         isRecording = false;
     }
 });
