@@ -5,4 +5,5 @@ pydub
 docxtpl
 python-docx
 flask-cors
+ffmpeg-python
 
