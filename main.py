@@ -1,28 +1,33 @@
 import os
 import tempfile
-import requests
-from flask import Flask, request, jsonify, render_template
-from pydub import AudioSegment
+from flask import Flask, request, render_template, jsonify, send_file
 from openai import OpenAI
+import requests
 
 app = Flask(__name__)
 
-# Config
-ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
+# Load API keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-# Arabic field prompts
 field_prompts = {
     "Date": "🎙️ أرسل تاريخ الواقعة.",
     "Briefing": "🎙️ أرسل موجز الواقعة.",
     "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
     "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و إجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
     "TechincalOpinion": "🎙️ أرسل الرأي الفني."
 }
-field_keys = list(field_prompts.keys())
-user_state = {"step": 0, "responses": {}}
+
+field_names_ar = {
+    "Date": "التاريخ",
+    "Briefing": "موجز الواقعة",
+    "LocationObservations": "معاينة الموقع",
+    "Examination": "نتيجة الفحص الفني",
+    "Outcomes": "النتيجة",
+    "TechincalOpinion": "الرأي الفني"
+}
 
 @app.route("/")
 def index():
@@ -30,22 +35,37 @@ def index():
 
 @app.route("/start", methods=["POST"])
 def start():
-    user_state["step"] = 0
-    user_state["responses"] = {}
-    return jsonify({"message": "started"})
+    return jsonify({"status": "started"})
 
-@app.route("/fieldPrompt", methods=["GET"])
+@app.route("/fieldPrompt")
 def field_prompt():
-    step = user_state["step"]
-    if step >= len(field_keys):
-        return jsonify({"done": True})
+    step = int(request.args.get("step", 0))
+    fields = list(field_prompts.keys())
 
-    field = field_keys[step]
-    prompt = field_prompts[field]
+    if step >= len(fields):
+        return jsonify({"done": True, "prompt": "", "fieldName": "", "audioUrl": ""})
 
-    # Get voice from ElevenLabs
-    audio = speak_text(prompt)
-    return audio_response(audio)
+    field_name = fields[step]
+    prompt = field_prompts[field_name]
+    spoken_mp3 = speak_text(prompt)
+
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as tmp:
+        tmp.write(spoken_mp3)
+        tmp.flush()
+        temp_path = tmp.name
+
+    return jsonify({
+        "prompt": prompt,
+        "fieldName": field_name,
+        "audioUrl": f"/audio?path={temp_path}"
+    })
+
+@app.route("/audio")
+def audio():
+    path = request.args.get("path")
+    if not os.path.exists(path):
+        return "File not found", 404
+    return send_file(path, mimetype="audio/mpeg")
 
 def speak_text(text):
     response = requests.post(
@@ -62,40 +82,6 @@ def speak_text(text):
         }
     )
     return response.content
-
-def audio_response(audio_bytes):
-    temp_path = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    with open(temp_path.name, "wb") as f:
-        f.write(audio_bytes)
-    try:
-        audio = AudioSegment.from_file(temp_path.name, format="mp3")
-    except Exception as e:
-        print("⚠️ Error decoding MP3:", e)
-        return jsonify({"error": "audio playback failed"}), 500
-    return app.response_class(audio.export(format="mp3"), mimetype="audio/mpeg")
-
-@app.route("/voice", methods=["POST"])
-def handle_voice():
-    audio_file = request.files["audio"]
-    audio_path = os.path.join(tempfile.gettempdir(), "input.wav")
-    audio_file.save(audio_path)
-
-    # Whisper transcription
-    with open(audio_path, "rb") as f:
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            language="ar"
-        )
-    transcript_text = transcript.text.strip()
-
-    step = user_state["step"]
-    if step < len(field_keys):
-        field = field_keys[step]
-        user_state["responses"][field] = transcript_text
-        user_state["step"] += 1
-
-    return jsonify({"transcript": transcript_text})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
