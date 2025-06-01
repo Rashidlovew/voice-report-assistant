@@ -1,35 +1,66 @@
 import os
 import base64
 import tempfile
-from flask import Flask, request, jsonify, send_file
+import requests
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+
 from openai import OpenAI
 from pydub import AudioSegment
-import requests
 
 app = Flask(__name__)
 CORS(app)
 
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
-ELEVENLABS_KEY = os.environ.get("ELEVENLABS_KEY")
+# Load API keys from environment variables
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
+
 client = OpenAI(api_key=OPENAI_API_KEY)
+
+user_state = {
+    "current_field": "Date"
+}
+
+field_prompts = {
+    "Date": "🎙️ أرسل تاريخ الواقعة.",
+    "Briefing": "🎙️ أرسل موجز الواقعة.",
+    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+}
 
 @app.route("/")
 def index():
-    return send_file("index.html")
+    return render_template("index.html")
+
+@app.route("/start", methods=["POST"])
+def start():
+    user_state["current_field"] = "Date"
+    return jsonify({"status": "started", "nextPrompt": field_prompts["Date"]})
+
+@app.route("/fieldPrompt", methods=["GET"])
+def field_prompt():
+    field = user_state["current_field"]
+    prompt = field_prompts.get(field, "🎙️ Please speak...")
+    audio_data = speak_text(prompt)
+    audio_base64 = base64.b64encode(audio_data).decode()
+    return jsonify({
+        "prompt": prompt,
+        "audio": f"data:audio/mpeg;base64,{audio_base64}"
+    })
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
-    data = request.get_json()
-    audio_data = data.get("audio", "")
-    if not audio_data or "," not in audio_data:
-        return jsonify({"error": "Invalid audio format"}), 400
-
     try:
-        audio_bytes = base64.b64decode(audio_data.split(",")[1])
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-            f.write(audio_bytes)
-            temp_path = f.name
+        audio_data = request.json.get("audio")
+        audio_base64 = audio_data.split(",")[1]
+        audio_bytes = base64.b64decode(audio_base64)
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_audio:
+            temp_audio.write(audio_bytes)
+            temp_audio.flush()
+            temp_path = temp_audio.name
 
         audio = AudioSegment.from_file(temp_path)
         wav_path = temp_path.replace(".webm", ".wav")
@@ -38,22 +69,31 @@ def submit_audio():
         with open(wav_path, "rb") as f:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=f
-            ).text
+                file=f,
+                response_format="text",
+                language="ar"
+            )
 
-        return jsonify({ "transcript": transcript })
+        current_field = user_state["current_field"]
+        user_state["last_input"] = transcript
+
+        # Move to next field
+        fields = list(field_prompts.keys())
+        current_index = fields.index(current_field)
+        if current_index + 1 < len(fields):
+            user_state["current_field"] = fields[current_index + 1]
+            next_field = user_state["current_field"]
+            next_prompt = field_prompts[next_field]
+        else:
+            next_prompt = "✅ All fields collected."
+
+        return jsonify({
+            "transcript": transcript,
+            "nextPrompt": next_prompt
+        })
 
     except Exception as e:
-        return jsonify({ "error": str(e) }), 500
-
-@app.route("/fieldPrompt", methods=["GET"])
-def field_prompt():
-    text = "أرسل تاريخ الواقعة."
-    audio_data = speak_text(text)
-    return jsonify({
-        "prompt": text,
-        "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio_data).decode()}"
-    })
+        return jsonify({"error": str(e)}), 500
 
 def speak_text(text):
     response = requests.post(
