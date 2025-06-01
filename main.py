@@ -7,8 +7,10 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
+# Load keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
+
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
@@ -45,23 +47,17 @@ def submit_audio():
                 response_format="text"
             )
 
-        gpt_reply = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "أنت مساعد ذكي مختص بإعداد تقارير الفحص الفني للشرطة."},
-                {"role": "user", "content": transcript}
-            ]
-        ).choices[0].message.content
+        user_input = transcript.strip()
+        ai_reply = f"بالطبع، يمكنني التحدث معك. كيف يمكنني مساعدتك اليوم؟"
 
-        audio_content = speak_text(gpt_reply)
-        audio_base64 = base64.b64encode(audio_content).decode()
+        audio_response = speak_text(ai_reply)
+        encoded_audio = base64.b64encode(audio_response).decode()
 
         return jsonify({
-            "transcript": transcript,
-            "response": gpt_reply,
-            "audio": audio_base64
+            "transcript": user_input,
+            "response": ai_reply,
+            "audio": encoded_audio
         })
-
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
