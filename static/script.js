@@ -1,60 +1,64 @@
+let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
 
-function startConversation() {
-    fetch("/start", { method: "POST" })
-        .then(res => res.json())
-        .then(data => {
-            document.getElementById("prompt").innerText = `🎧 استمع إلى: ${data.prompt}`;
-            document.getElementById("transcript").placeholder = data.prompt;
-            playAudio(data.audio);
+async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = event => {
+        audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+        const blob = new Blob(audioChunks, { type: 'audio/webm' });
+        const base64Audio = await blobToBase64(blob);
+
+        const response = await fetch("/submitAudio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ audio: base64Audio })
         });
+
+        const result = await response.json();
+        document.getElementById("response").innerText = result.text;
+
+        if (!result.done) {
+            const audio = new Audio("data:audio/mp3;base64," + result.audio);
+            audio.onended = () => startRecording(); // loop
+            audio.play();
+        }
+    };
+
+    mediaRecorder.start();
+    setTimeout(() => mediaRecorder.stop(), 5000); // 5 seconds limit
 }
 
-function playAudio(audioBytes) {
-    const blob = new Blob([new Uint8Array(audioBytes)], { type: "audio/mpeg" });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-    audio.play().catch(err => {
-        console.error("Audio playback error:", err);
-        document.getElementById("prompt").innerHTML = "❌ لم يتم تشغيل الصوت.";
+async function blobToBase64(blob) {
+    return new Promise((resolve, _) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
     });
 }
 
-function startRecording() {
-    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-        mediaRecorder = new MediaRecorder(stream);
-        mediaRecorder.start();
-        audioChunks = [];
+async function init() {
+    const response = await fetch("/start", { method: "POST" });
+    const data = await response.json();
 
-        mediaRecorder.addEventListener("dataavailable", event => {
-            audioChunks.push(event.data);
-        });
+    const voiceResponse = await fetch("/fieldPrompt");
+    const { prompt } = await voiceResponse.json();
 
-        mediaRecorder.addEventListener("stop", () => {
-            const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-            const formData = new FormData();
-            formData.append("audio", audioBlob);
-
-            fetch("/listen", {
-                method: "POST",
-                body: formData
-            })
-                .then(res => res.json())
-                .then(data => {
-                    document.getElementById("prompt").innerText = `🎧 استمع إلى: ${data.prompt}`;
-                    document.getElementById("transcript").value = data.text;
-                    playAudio(data.audio);
-                });
-        });
-
-        setTimeout(() => {
-            mediaRecorder.stop();
-        }, 7000);
+    const reply = await fetch("/submitAudio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audio: "" })
     });
+
+    const audio = new Audio("data:audio/mp3;base64," + (await reply.json()).audio);
+    audio.onended = () => startRecording();
+    audio.play();
 }
 
-document.addEventListener("DOMContentLoaded", () => {
-    document.getElementById("startButton").addEventListener("click", startConversation);
-    document.getElementById("transcript").addEventListener("focus", startRecording);
-});
+window.onload = init;
