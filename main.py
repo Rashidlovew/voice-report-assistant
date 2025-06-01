@@ -1,113 +1,75 @@
-from flask import Flask, request, send_file, jsonify
 import os
-import tempfile
 import base64
-import requests
+import tempfile
+from flask import Flask, request, jsonify, send_from_directory
+from flask_cors import CORS
 from openai import OpenAI
-from pydub import AudioSegment
-from io import BytesIO
-from docxtpl import DocxTemplate
-from docx.shared import Pt
-from docx.oxml.ns import qn
+import requests
 
 app = Flask(__name__)
+CORS(app)
 
-# Load keys from environment
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
-ELEVENLABS_KEY = os.environ["ELEVENLABS_KEY"]
-EMAIL_SENDER = os.environ["EMAIL_SENDER"]
-EMAIL_PASSWORD = os.environ["EMAIL_PASSWORD"]
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 
-field_prompts = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
-}
+field_prompts = [
+    "🎙️ أرسل تاريخ الواقعة.",
+    "🎙️ أرسل موجز الواقعة.",
+    "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "🎙️ أرسل الرأي الفني."
+]
 
-field_names_ar = {
-    "Date": "التاريخ",
-    "Briefing": "موجز الواقعة",
-    "LocationObservations": "معاينة الموقع",
-    "Examination": "نتيجة الفحص الفني",
-    "Outcomes": "النتيجة",
-    "TechincalOpinion": "الرأي الفني"
-}
+state = {"step": 0}
 
-session_data = {
-    "current_field": "Date",
-    "responses": {}
-}
+@app.route("/")
+def index():
+    return send_from_directory(".", "index.html")
+
+@app.route("/static/script.js")
+def script():
+    return send_from_directory("static", "script.js")
 
 @app.route("/start", methods=["POST"])
 def start():
-    session_data["current_field"] = "Date"
-    session_data["responses"] = {}
-    return jsonify({"prompt": field_prompts["Date"]})
+    state["step"] = 0
+    return jsonify({"message": "بدأنا!", "done": False})
 
 @app.route("/fieldPrompt", methods=["GET"])
-def get_prompt():
-    field = session_data["current_field"]
-    return jsonify({
-        "prompt": field_prompts.get(field, "🎙️"),
-        "field": field
-    })
+def field_prompt():
+    step = state["step"]
+    if step >= len(field_prompts):
+        return jsonify({"done": True})
+    prompt = field_prompts[step]
+    audio = speak_text(prompt)
+    return jsonify({"text": prompt, "audio": audio, "done": False})
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
-    audio_data = request.json["audio"]
+    data = request.get_json()
+    audio_data = data.get("audio", "")
+    
+    if "," not in audio_data:
+        return jsonify({"error": "Invalid audio data"}), 400
+
     audio_bytes = base64.b64decode(audio_data.split(",")[1])
-    audio = AudioSegment.from_file(BytesIO(audio_bytes), format="webm")
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio:
-        audio.export(temp_audio.name, format="mp3")
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+        temp_file.write(audio_bytes)
+        temp_path = temp_file.name
 
-        transcript = transcribe_audio(temp_audio.name)
-        refined = refine_response(transcript, session_data["current_field"])
-        session_data["responses"][session_data["current_field"]] = refined
+    audio_file = open(temp_path, "rb")
+    transcript = client.audio.transcriptions.create(
+        file=audio_file,
+        model="whisper-1",
+        language="ar"
+    ).text
 
-        next_field = get_next_field(session_data["current_field"])
-        if next_field:
-            session_data["current_field"] = next_field
-            speech = speak_text(field_prompts[next_field])
-            return jsonify({
-                "text": refined,
-                "next_field": next_field,
-                "audio": base64.b64encode(speech).decode()
-            })
-        else:
-            doc_path = generate_report(session_data["responses"])
-            return jsonify({
-                "text": "✅ تم الانتهاء من جمع البيانات.",
-                "done": True
-            })
-
-def transcribe_audio(file_path):
-    with open(file_path, "rb") as f:
-        response = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=f,
-            language="ar"
-        )
-    return response.text
-
-def refine_response(transcript, field_name):
-    field_ar = field_names_ar.get(field_name, field_name)
-    prompt = f"لدي النص التالي المرتبط بـ {field_ar}:\n\"{transcript}\"\nرجاءً أعد صياغته بأسلوب تقرير شرطي احترافي باللغة العربية."
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3
-    )
-    return response.choices[0].message.content.strip()
-
-def get_next_field(current):
-    keys = list(field_prompts.keys())
-    idx = keys.index(current)
-    return keys[idx + 1] if idx + 1 < len(keys) else None
+    step = state["step"]
+    state["step"] += 1
+    return jsonify({"text": transcript, "done": step >= len(field_prompts)})
 
 def speak_text(text):
     response = requests.post(
@@ -123,22 +85,7 @@ def speak_text(text):
             "output_format": "mp3_44100_128"
         }
     )
-    return response.content
-
-def generate_report(data):
-    doc = DocxTemplate("police_report_template.docx")
-    doc.render(data)
-    output_path = "final_report.docx"
-    doc.save(output_path)
-    return output_path
-
-@app.route("/")
-def home():
-    return send_file("templates/index.html")
-
-@app.route("/static/<path:filename>")
-def serve_static(filename):
-    return send_file(f"static/{filename}")
+    return base64.b64encode(response.content).decode("utf-8")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
