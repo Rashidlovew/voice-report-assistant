@@ -6,55 +6,56 @@ const startButton = document.getElementById("start-button");
 const statusText = document.getElementById("status");
 const responseArea = document.getElementById("response");
 
-startButton.addEventListener("click", async () => {
-    if (!isRecording) {
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+async function getNextPrompt() {
+    const res = await fetch("/fieldPrompt");
+    const data = await res.json();
+    statusText.innerHTML = `🧠 AI: ${data.prompt} <button onclick="playVoice('${data.audio}')">🔊</button>`;
+    playVoice(data.audio);
+}
+
+function playVoice(src) {
+    const audio = new Audio(src);
+    audio.play();
+    audio.onended = () => startRecording();
+}
+
+function startRecording() {
+    navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
         mediaRecorder = new MediaRecorder(stream);
         audioChunks = [];
 
-        mediaRecorder.addEventListener("dataavailable", event => {
+        mediaRecorder.ondataavailable = event => {
             audioChunks.push(event.data);
-        });
+        };
 
-        mediaRecorder.addEventListener("stop", async () => {
-            const audioBlob = new Blob(audioChunks);
+        mediaRecorder.onstop = async () => {
+            const blob = new Blob(audioChunks, { type: "audio/webm" });
             const reader = new FileReader();
             reader.onloadend = async () => {
                 const base64Audio = reader.result;
-                try {
-                    const response = await fetch("/submitAudio", {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json"
-                        },
-                        body: JSON.stringify({ audio: base64Audio })
-                    });
 
-                    const result = await response.json();
-                    responseArea.value = result.transcript + "\n\n" + result.response;
-                    statusText.innerText = "🔊 AI: " + result.response;
+                const res = await fetch("/submitAudio", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ audio: base64Audio })
+                });
 
-                    const audio = new Audio("data:audio/mp3;base64," + result.audio);
-                    audio.play();
-                    audio.onerror = () => {
-                        statusText.innerText += "\n❗ الصوت غير مدعوم في هذا المتصفح. جرب Chrome.";
-                    };
+                const result = await res.json();
+                responseArea.value += `👤 ${result.transcript}\n🤖 ${result.response}\n\n`;
 
-                    audio.onended = () => startButton.click();  // Continue listening
-                } catch (err) {
-                    statusText.innerText = "❌ Error processing audio.";
-                }
+                getNextPrompt();
             };
-            reader.readAsDataURL(audioBlob);
-        });
+            reader.readAsDataURL(blob);
+        };
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 Recording... please speak.";
-        startButton.innerText = "⏹️ Stop";
-        isRecording = true;
-    } else {
-        mediaRecorder.stop();
-        startButton.innerText = "🎙️ Start Talking";
-        isRecording = false;
-    }
+        setTimeout(() => {
+            mediaRecorder.stop();
+        }, 5000); // 5 sec per response
+    });
+}
+
+startButton.addEventListener("click", () => {
+    startButton.disabled = true;
+    getNextPrompt(); // start the voice conversation
 });
