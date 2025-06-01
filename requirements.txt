@@ -4,3 +4,5 @@ requests
 pydub
 docxtpl
 python-docx
+flask-cors
+
