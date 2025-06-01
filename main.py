@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Environment keys
+# Load API keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -36,6 +36,7 @@ def submit_audio():
             temp_file.write(audio_bytes)
             temp_path = temp_file.name
 
+        # Convert to wav for Whisper
         wav_path = temp_path.replace(".webm", ".wav")
         sound = AudioSegment.from_file(temp_path)
         sound.export(wav_path, format="wav")
@@ -47,25 +48,26 @@ def submit_audio():
                 response_format="text"
             )
 
+        # Enhance the Arabic transcript using GPT-4
         gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
-                {"role": "user", "content": f"النص المُرسل: {transcript.text.strip()}"}
+                {"role": "user", "content": "النص المُرسل: " + transcript.strip()}
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
 
+        # Get audio reply from ElevenLabs (streaming)
         audio_mp3 = stream_speech(enhanced_text)
 
         return jsonify({
-            "transcript": transcript.text.strip(),
+            "transcript": transcript.strip(),
             "response": enhanced_text,
             "audio": base64.b64encode(audio_mp3).decode("utf-8")
         })
 
     except Exception as e:
-        print("🔥 INTERNAL SERVER ERROR:", str(e))
         return jsonify({"error": str(e)}), 500
 
 @app.route("/fieldPrompt")
