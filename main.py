@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load API keys from environment
+# Environment keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -36,7 +36,6 @@ def submit_audio():
             temp_file.write(audio_bytes)
             temp_path = temp_file.name
 
-        # Convert to wav for Whisper
         wav_path = temp_path.replace(".webm", ".wav")
         sound = AudioSegment.from_file(temp_path)
         sound.export(wav_path, format="wav")
@@ -48,21 +47,21 @@ def submit_audio():
                 response_format="text"
             )
 
-        # Enhance the Arabic transcript using GPT-4
+        # Handle both string and object responses
+        text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
+
         gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
-                {"role": "user", "content": "النص المُرسل: " + transcript.strip()}
+                {"role": "user", "content": f"النص المُرسل: {text}"}
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
-
-        # Get audio reply from ElevenLabs (streaming)
         audio_mp3 = stream_speech(enhanced_text)
 
         return jsonify({
-            "transcript": transcript.strip(),
+            "transcript": text,
             "response": enhanced_text,
             "audio": base64.b64encode(audio_mp3).decode("utf-8")
         })
@@ -92,7 +91,8 @@ def stream_speech(text):
             "voice_settings": {
                 "stability": 0.3,
                 "similarity_boost": 0.75
-            }
+            },
+            "output_format": "mp3_44100_128"
         }
     )
     return response.content
