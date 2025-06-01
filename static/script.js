@@ -19,10 +19,8 @@ startButton.addEventListener("click", async () => {
         mediaRecorder.addEventListener("stop", async () => {
             const audioBlob = new Blob(audioChunks);
             const reader = new FileReader();
-
             reader.onloadend = async () => {
                 const base64Audio = reader.result;
-
                 try {
                     const response = await fetch("/submitAudio", {
                         method: "POST",
@@ -35,49 +33,38 @@ startButton.addEventListener("click", async () => {
                     const result = await response.json();
 
                     if (result.error) {
-                        statusText.innerHTML = `❌ Error: ${result.error}`;
+                        statusText.innerText = "❌ Error: " + result.error;
                         return;
                     }
 
-                    responseArea.value += `\n🧑‍💼 أنت: ${result.transcript}\n🤖 AI: ${result.response}\n`;
-                    statusText.innerHTML = `🤖 AI: ${result.response}`;
+                    // Display the result
+                    responseArea.value += `\n👤 أنت: ${result.transcript}\n🤖 AI: ${result.response}\n`;
+                    statusText.innerText = "🤖 AI: " + result.response;
 
-                    const audio = new Audio("data:audio/mp3;base64," + result.audio);
+                    // FIX: Ensure audio plays properly by converting base64 to Blob URL
+                    const audioBlob = await (await fetch("data:audio/mp3;base64," + result.audio)).blob();
+                    const audioUrl = URL.createObjectURL(audioBlob);
+                    const audio = new Audio(audioUrl);
                     audio.play();
 
-                    audio.onended = () => {
-                        startButton.click(); // Auto-listen again
-                    };
+                    // Automatically start next recording after AI speaks
+                    audio.onended = () => startButton.click();
+
                 } catch (err) {
-                    statusText.innerHTML = "❌ Error sending audio.";
+                    console.error(err);
+                    statusText.innerText = "❌ Error sending audio.";
                 }
             };
-
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 Listening... please speak";
+        statusText.innerText = "🎤 Recording... please speak.";
         startButton.innerText = "⏹️ Stop";
         isRecording = true;
     } else {
         mediaRecorder.stop();
         startButton.innerText = "🎙️ Start Talking";
         isRecording = false;
-    }
-});
-
-// Auto greet user
-window.addEventListener("DOMContentLoaded", async () => {
-    try {
-        const greeting = "مرحباً، كيف حالك اليوم؟";
-        const response = await fetch(`/fieldPrompt?text=${encodeURIComponent(greeting)}`);
-        const result = await response.json();
-
-        statusText.innerHTML = `🤖 AI: ${result.prompt}`;
-        const audio = new Audio(result.audio);
-        audio.play();
-    } catch (err) {
-        statusText.innerHTML = "❗ الصوت غير مدعوم في هذا المتصفح. جرّب Chrome.";
     }
 });
