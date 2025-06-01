@@ -7,7 +7,6 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -16,44 +15,20 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
 CORS(app)
 
-# Field prompts for conversation
-field_prompts = [
-    "مرحباً، كيف حالك اليوم؟",
-    "أخبرني عن تاريخ الواقعة.",
-    "ما الذي لاحظته في موقع الحادث؟",
-    "ما هي نتيجة الفحص الفني؟",
-    "ما هي النتائج التي توصلت إليها؟",
-    "ما هو رأيك الفني النهائي؟"
-]
-user_state = {}
-
 @app.route("/")
 def index():
     return render_template("index.html")
-
-@app.route("/fieldPrompt", methods=["GET"])
-def field_prompt():
-    user_id = request.remote_addr
-    index = user_state.get(user_id, 0)
-    
-    if index < len(field_prompts):
-        prompt = field_prompts[index]
-        user_state[user_id] = index + 1
-    else:
-        prompt = "تم الانتهاء من جميع الأسئلة. شكراً لك!"
-
-    audio = speak_text(prompt)
-    return jsonify({
-        "prompt": prompt,
-        "audio": f"data:audio/mp3;base64,{base64.b64encode(audio).decode()}"
-    })
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
     try:
         data = request.get_json()
         audio_data = data["audio"]
-        audio_base64 = audio_data.split(",")[1]
+        if "," in audio_data:
+            audio_base64 = audio_data.split(",")[1]
+        else:
+            return jsonify({"error": "Invalid audio format"}), 400
+
         audio_bytes = base64.b64decode(audio_base64)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
@@ -71,9 +46,27 @@ def submit_audio():
                 response_format="text"
             )
 
-        return jsonify({"transcript": transcript, "response": f"شكرًا على ردك: {transcript}"})
+        user_text = transcript.strip()
+        response_text = generate_response(user_text)
+        audio = speak_text(response_text)
+
+        return jsonify({
+            "transcript": user_text,
+            "response": response_text,
+            "audio": base64.b64encode(audio).decode("utf-8")
+        })
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route("/fieldPrompt")
+def field_prompt():
+    text = request.args.get("text", "مرحباً، كيف حالك اليوم؟")
+    audio = speak_text(text)
+    return jsonify({
+        "prompt": text,
+        "audio": base64.b64encode(audio).decode("utf-8")
+    })
 
 def speak_text(text):
     response = requests.post(
@@ -89,12 +82,13 @@ def speak_text(text):
                 "stability": 0.4,
                 "similarity_boost": 0.75
             },
-            "model_id": "eleven_multilingual_v2",
-            "output_format": "mp3_44100_128"  # ✅ MP3 compatible format
+            "output_format": "mp3_44100_128"
         }
     )
     return response.content
 
+def generate_response(user_input):
+    return f"بالطبع، يمكنك التحدث معي. كيف يمكنني مساعدتك اليوم؟"
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
