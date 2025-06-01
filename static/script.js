@@ -24,37 +24,37 @@ startButton.addEventListener("click", async () => {
                 try {
                     const response = await fetch("/submitAudio", {
                         method: "POST",
-                        headers: { "Content-Type": "application/json" },
+                        headers: {
+                            "Content-Type": "application/json"
+                        },
                         body: JSON.stringify({ audio: base64Audio })
                     });
+
                     const result = await response.json();
-
-                    if (result.error) {
-                        statusText.innerText = "❌ خطأ: " + result.error;
-                        return;
-                    }
-
-                    responseArea.value = "🗣️ " + result.transcript + "\n\n🤖 " + result.response;
+                    responseArea.value = result.transcript + "\n\n" + result.response;
                     statusText.innerText = "🔊 AI: " + result.response;
 
                     const audio = new Audio("data:audio/mp3;base64," + result.audio);
                     audio.play();
+                    audio.onerror = () => {
+                        statusText.innerText += "\n❗ الصوت غير مدعوم في هذا المتصفح. جرب Chrome.";
+                    };
 
-                    audio.onended = () => startButton.click();
+                    audio.onended = () => startButton.click();  // Continue listening
                 } catch (err) {
-                    statusText.innerText = "❌ خطأ في معالجة الصوت.";
+                    statusText.innerText = "❌ Error processing audio.";
                 }
             };
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 تسجيل... تفضل بالكلام.";
-        startButton.innerText = "⏹️ إيقاف";
+        statusText.innerText = "🎤 Recording... please speak.";
+        startButton.innerText = "⏹️ Stop";
         isRecording = true;
     } else {
         mediaRecorder.stop();
-        startButton.innerText = "🎙️ ابدأ المحادثة";
+        startButton.innerText = "🎙️ Start Talking";
         isRecording = false;
     }
 });
