@@ -7,10 +7,8 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
-
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
@@ -24,39 +22,47 @@ def index():
 def submit_audio():
     try:
         data = request.get_json()
-        audio_data = data.get("audio", "")
-        if not audio_data or "," not in audio_data:
+        audio_data = data["audio"]
+        if "," in audio_data:
+            audio_base64 = audio_data.split(",")[1]
+        else:
             return jsonify({"error": "Invalid audio format"}), 400
 
-        audio_base64 = audio_data.split(",")[1]
         audio_bytes = base64.b64decode(audio_base64)
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_webm:
-            temp_webm.write(audio_bytes)
-            webm_path = temp_webm.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+            temp_file.write(audio_bytes)
+            temp_path = temp_file.name
 
-        wav_path = webm_path.replace(".webm", ".wav")
-        sound = AudioSegment.from_file(webm_path)
+        wav_path = temp_path.replace(".webm", ".wav")
+        sound = AudioSegment.from_file(temp_path)
         sound.export(wav_path, format="wav")
 
-        with open(wav_path, "rb") as f:
-            transcription = client.audio.transcriptions.create(
+        with open(wav_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=f,
+                file=audio_file,
                 response_format="text"
             )
 
-        ai_reply = f"تم استلام ما قلت: {transcription.strip()}، هل ترغب بالاستمرار؟"
-        spoken_audio = speak_text(ai_reply)
+        gpt_reply = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "أنت مساعد ذكي مختص بإعداد تقارير الفحص الفني للشرطة."},
+                {"role": "user", "content": transcript}
+            ]
+        ).choices[0].message.content
+
+        audio_content = speak_text(gpt_reply)
+        audio_base64 = base64.b64encode(audio_content).decode()
 
         return jsonify({
-            "transcript": transcription.strip(),
-            "response": ai_reply,
-            "audio": base64.b64encode(spoken_audio).decode()
+            "transcript": transcript,
+            "response": gpt_reply,
+            "audio": audio_base64
         })
 
     except Exception as e:
-        print("❌ Error in /submitAudio:", str(e))
         return jsonify({"error": str(e)}), 500
 
 def speak_text(text):
@@ -69,7 +75,12 @@ def speak_text(text):
         },
         json={
             "text": text,
-            "voice_settings": {"stability": 0.4, "similarity_boost": 0.75},
+            "voice_settings": {
+                "stability": 0.4,
+                "similarity_boost": 0.75,
+                "style": 1,
+                "use_speaker_boost": True
+            },
             "output_format": "mp3_44100_128"
         }
     )
