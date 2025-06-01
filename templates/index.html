@@ -8,31 +8,35 @@
             font-family: 'Segoe UI', sans-serif;
             text-align: center;
             padding: 50px;
-            background-color: #f8f8f8;
+            background-color: #f4f4f4;
         }
         button {
-            padding: 10px 25px;
-            font-size: 18px;
+            padding: 12px 24px;
+            font-size: 20px;
             cursor: pointer;
-            margin-bottom: 20px;
+            margin-top: 20px;
         }
         #status {
+            margin: 20px;
             font-size: 20px;
-            margin: 20px 0;
+            color: #333;
         }
         textarea {
-            width: 80%;
-            height: 120px;
+            width: 90%;
+            height: 200px;
+            margin-top: 20px;
             font-size: 16px;
+            padding: 10px;
             direction: rtl;
         }
     </style>
 </head>
 <body>
     <h1>🎤 مساعد إعداد التقارير الصوتي</h1>
-    <button id="start-button">ابدأ المحادثة 🎙️</button>
-    <div id="status">🔊 جاري التحميل...</div>
+    <button id="start-button">🎙️ Start Talking</button>
+    <div id="status">⏳ جاري تحميل الرسالة الافتتاحية...</div>
     <textarea id="response" readonly></textarea>
+
     <script src="/static/script.js"></script>
 </body>
 </html>
