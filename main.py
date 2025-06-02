@@ -59,9 +59,10 @@ def submit_audio():
         enhanced_text = gpt_response.choices[0].message.content.strip()
         audio_mp3 = generate_speech(enhanced_text)
 
-        # Save audio locally for browser download/debug
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
+
+        print("Audio size in bytes:", len(audio_mp3))
 
         return jsonify({
             "transcript": text,
@@ -82,8 +83,9 @@ def download_audio():
         return "Audio file not found", 404
 
 def generate_speech(text):
+    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel - multilingual
     response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr",
+        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
         headers={
             "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json",
@@ -91,11 +93,11 @@ def generate_speech(text):
         },
         json={
             "text": text,
+            "model_id": "eleven_multilingual_v2",
             "voice_settings": {
                 "stability": 0.3,
                 "similarity_boost": 0.75
-            },
-            "output_format": "mp3_44100_128"
+            }
         }
     )
     return response.content
