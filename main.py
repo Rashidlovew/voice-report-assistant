@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Environment keys
+# Load API keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -60,7 +60,7 @@ def submit_audio():
 
         audio_mp3 = stream_speech(enhanced_text)
 
-        # ✅ Save audio and log for debugging
+        # Save and report size
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
 
@@ -92,10 +92,10 @@ def download_audio():
     else:
         return "Audio not found", 404
 
-# ✅ ElevenLabs streaming + debug logging
+# ✅ ElevenLabs streaming with your working voice (Aria)
 def stream_speech(text):
     response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
+        "https://api.elevenlabs.io/v1/text-to-speech/9BWtsMlNQrJLRac0k9x3/stream",  # Aria voice ID
         headers={
             "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json",
@@ -112,15 +112,11 @@ def stream_speech(text):
         stream=True
     )
 
-    print("Status Code:", response.status_code)
-    print("Headers:", response.headers)
-
     audio_data = b""
     for chunk in response.iter_content(chunk_size=4096):
         if chunk:
             audio_data += chunk
 
-    print("Final Audio Size:", len(audio_data), "bytes")
     return audio_data
 
 if __name__ == "__main__":
