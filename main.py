@@ -60,7 +60,7 @@ def submit_audio():
 
         audio_mp3 = stream_speech(enhanced_text)
 
-        # ✅ Debug: Save the audio for testing
+        # ✅ Save audio and log for debugging
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
 
@@ -84,7 +84,6 @@ def field_prompt():
         "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
     })
 
-# ✅ New: Download saved audio for testing
 @app.route("/download-audio")
 def download_audio():
     filepath = "test_response.mp3"
@@ -93,6 +92,7 @@ def download_audio():
     else:
         return "Audio not found", 404
 
+# ✅ ElevenLabs streaming + debug logging
 def stream_speech(text):
     response = requests.post(
         "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
@@ -109,16 +109,19 @@ def stream_speech(text):
             },
             "output_format": "mp3_44100_128"
         },
-        stream=True  # ✅ Enable chunked response
+        stream=True
     )
+
+    print("Status Code:", response.status_code)
+    print("Headers:", response.headers)
 
     audio_data = b""
     for chunk in response.iter_content(chunk_size=4096):
         if chunk:
             audio_data += chunk
 
+    print("Final Audio Size:", len(audio_data), "bytes")
     return audio_data
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
