@@ -52,55 +52,40 @@ def submit_audio():
         gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
+                {"role": "system", "content": "You are an emotional and helpful Arabic-speaking police assistant."},
                 {"role": "user", "content": f"النص المُرسل: {text}"}
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
-        audio_mp3 = generate_speech(enhanced_text)
 
-        with open("test_response.mp3", "wb") as f:
-            f.write(audio_mp3)
-
-        print("Audio size in bytes:", len(audio_mp3))
+        stream_url = stream_speech_url(enhanced_text)
 
         return jsonify({
             "transcript": text,
             "response": enhanced_text,
-            "audio": base64.b64encode(audio_mp3).decode("utf-8")
+            "audio_url": stream_url
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/download-audio")
-def download_audio():
-    try:
-        with open("test_response.mp3", "rb") as f:
-            audio_data = f.read()
-        return f"data:audio/mpeg;base64,{base64.b64encode(audio_data).decode()}"
-    except:
-        return "Audio file not found", 404
-
-def generate_speech(text):
-    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel - multilingual
-    response = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}",
-        headers={
-            "xi-api-key": ELEVENLABS_KEY,
-            "Content-Type": "application/json",
-            "Accept": "audio/mpeg"
+def stream_speech_url(text):
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream-url"
+    headers = {
+        "xi-api-key": ELEVENLABS_KEY,
+        "Content-Type": "application/json"
+    }
+    body = {
+        "text": text,
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.75
         },
-        json={
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {
-                "stability": 0.3,
-                "similarity_boost": 0.75
-            }
-        }
-    )
-    return response.content
+        "output_format": "mp3_44100_128"
+    }
+    res = requests.post(url, headers=headers, json=body)
+    stream_url = res.json().get("url")
+    return stream_url
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
