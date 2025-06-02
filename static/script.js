@@ -6,17 +6,6 @@ const startButton = document.getElementById("start-button");
 const statusText = document.getElementById("status");
 const responseArea = document.getElementById("response");
 
-// ✅ Converts base64 → binary → playable audio
-function playAudioFromBase64(base64Audio) {
-    const binary = Uint8Array.from(atob(base64Audio), c => c.charCodeAt(0));
-    const blob = new Blob([binary], { type: 'audio/mpeg' });
-    const url = URL.createObjectURL(blob);
-    const audio = new Audio(url);
-
-    audio.play().catch(err => console.error("🔴 Audio play error:", err));
-    audio.onended = () => setTimeout(() => startButton.click(), 300);
-}
-
 startButton.addEventListener("click", async () => {
     if (!isRecording) {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -30,10 +19,8 @@ startButton.addEventListener("click", async () => {
         mediaRecorder.addEventListener("stop", async () => {
             const audioBlob = new Blob(audioChunks);
             const reader = new FileReader();
-
             reader.onloadend = async () => {
-                const base64Audio = reader.result.split(',').pop();
-
+                const base64Audio = reader.result;
                 try {
                     const response = await fetch("/submitAudio", {
                         method: "POST",
@@ -53,23 +40,23 @@ startButton.addEventListener("click", async () => {
                     responseArea.value += `\n👤 أنت: ${result.transcript}\n🤖 AI: ${result.response}\n`;
                     statusText.innerText = "🤖 AI: " + result.response;
 
-                    playAudioFromBase64(result.audio);
+                    const audioBase64 = result.audio;
+                    const audioSrc = `data:audio/mpeg;base64,${audioBase64}`;
+                    const audio = new Audio(audioSrc);
+                    audio.play().catch(e => console.error("Audio play failed:", e));
+
+                    audio.onended = () => startButton.click();
+
                 } catch (err) {
-                    console.error("❌ Error sending audio:", err);
-                    statusText.innerText = "❌ Failed to process your audio.";
+                    console.error(err);
+                    statusText.innerText = "❌ Error sending audio.";
                 }
             };
-
             reader.readAsDataURL(audioBlob);
         });
 
         mediaRecorder.start();
-        statusText.innerText = "🎤 جاري التسجيل... تفضل بالكلام.";
-        startButton.innerText = "⏹️ إيقاف التسجيل";
+        statusText.innerText = "🎤 Recording... please speak.";
+        startButton.innerText = "⏹️ Stop";
         isRecording = true;
     } else {
-        mediaRecorder.stop();
-        startButton.innerText = "🎙️ ابدأ الحديث";
-        isRecording = false;
-    }
-});
