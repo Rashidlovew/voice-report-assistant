@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Environment keys
+# Load API keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -25,6 +25,7 @@ def submit_audio():
     try:
         data = request.get_json()
         audio_data = data["audio"]
+
         if "," in audio_data:
             audio_base64 = audio_data.split(",")[1]
         else:
@@ -34,10 +35,11 @@ def submit_audio():
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
             temp_file.write(audio_bytes)
-            temp_path = temp_file.name
+            webm_path = temp_file.name
 
-        wav_path = temp_path.replace(".webm", ".wav")
-        sound = AudioSegment.from_file(temp_path)
+        # Convert to wav for Whisper
+        wav_path = webm_path.replace(".webm", ".wav")
+        sound = AudioSegment.from_file(webm_path)
         sound.export(wav_path, format="wav")
 
         with open(wav_path, "rb") as audio_file:
@@ -47,45 +49,48 @@ def submit_audio():
                 response_format="text"
             )
 
-        text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
+        user_text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
 
         gpt_response = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are an emotional and helpful Arabic-speaking police assistant."},
-                {"role": "user", "content": f"النص المُرسل: {text}"}
+                {"role": "system", "content": "أنت مساعد تقارير يتحدث العربية بأسلوب مهني، رتب وأعد صياغة النص."},
+                {"role": "user", "content": user_text}
             ]
         )
+
         enhanced_text = gpt_response.choices[0].message.content.strip()
 
-        stream_url = stream_speech_url(enhanced_text)
+        # Convert to audio using ElevenLabs emotional voice
+        audio_mp3 = stream_speech(enhanced_text)
 
         return jsonify({
-            "transcript": text,
+            "transcript": user_text,
             "response": enhanced_text,
-            "audio_url": stream_url
+            "audio": base64.b64encode(audio_mp3).decode("utf-8")
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def stream_speech_url(text):
-    url = f"https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream-url"
-    headers = {
-        "xi-api-key": ELEVENLABS_KEY,
-        "Content-Type": "application/json"
-    }
-    body = {
-        "text": text,
-        "voice_settings": {
-            "stability": 0.3,
-            "similarity_boost": 0.75
+def stream_speech(text):
+    response = requests.post(
+        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
+        headers={
+            "xi-api-key": ELEVENLABS_KEY,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"
         },
-        "output_format": "mp3_44100_128"
-    }
-    res = requests.post(url, headers=headers, json=body)
-    stream_url = res.json().get("url")
-    return stream_url
+        json={
+            "text": text,
+            "voice_settings": {
+                "stability": 0.3,
+                "similarity_boost": 0.75
+            },
+            "output_format": "mp3_44100_128"
+        }
+    )
+    return response.content
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
