@@ -1,96 +1,72 @@
-import os
-import base64
-import tempfile
-import requests
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
-from pydub import AudioSegment
-from openai import OpenAI
-
-# Load API keys from environment
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
+import openai
+import requests
+import base64
+import os
+from io import BytesIO
 
 app = Flask(__name__)
 CORS(app)
 
+openai.api_key = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+VOICE_ID = os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return "Voice Assistant is running."
 
 @app.route("/submitAudio", methods=["POST"])
-def submit_audio():
-    try:
-        data = request.get_json()
-        audio_data = data["audio"]
+def handle_audio():
+    file = request.files["audio"]
+    audio_bytes = file.read()
 
-        if "," in audio_data:
-            audio_base64 = audio_data.split(",")[1]
-        else:
-            audio_base64 = audio_data
+    # Transcribe with OpenAI Whisper
+    transcript = openai.Audio.transcribe("whisper-1", BytesIO(audio_bytes))
+    user_text = transcript["text"]
 
-        audio_bytes = base64.b64decode(audio_base64)
+    # Rephrase the transcribed text using GPT
+    prompt = f"صِغ هذا بأسلوب تقرير شرطة رسمي: {user_text}"
+    completion = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": "أنت مساعد تقارير جنائي محترف."},
+            {"role": "user", "content": prompt}
+        ]
+    )
+    rephrased_text = completion.choices[0].message.content
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
-            temp_file.write(audio_bytes)
-            webm_path = temp_file.name
-
-        # Convert to wav for Whisper
-        wav_path = webm_path.replace(".webm", ".wav")
-        sound = AudioSegment.from_file(webm_path)
-        sound.export(wav_path, format="wav")
-
-        with open(wav_path, "rb") as audio_file:
-            transcript = client.audio.transcriptions.create(
-                model="whisper-1",
-                file=audio_file,
-                response_format="text"
-            )
-
-        user_text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
-
-        gpt_response = client.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "أنت مساعد تقارير يتحدث العربية بأسلوب مهني، رتب وأعد صياغة النص."},
-                {"role": "user", "content": user_text}
-            ]
-        )
-
-        enhanced_text = gpt_response.choices[0].message.content.strip()
-
-        # Convert to audio using ElevenLabs emotional voice
-        audio_mp3 = stream_speech(enhanced_text)
-
-        return jsonify({
-            "transcript": user_text,
-            "response": enhanced_text,
-            "audio": base64.b64encode(audio_mp3).decode("utf-8")
-        })
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-def stream_speech(text):
-    response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
+    # Synthesize voice with ElevenLabs
+    tts_response = requests.post(
+        f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
         headers={
-            "xi-api-key": ELEVENLABS_KEY,
-            "Content-Type": "application/json",
-            "Accept": "audio/mpeg"
+            "xi-api-key": ELEVENLABS_API_KEY,
+            "Content-Type": "application/json"
         },
         json={
-            "text": text,
+            "text": rephrased_text,
             "voice_settings": {
-                "stability": 0.3,
-                "similarity_boost": 0.75
-            },
-            "output_format": "mp3_44100_128"
+                "stability": 0.5,
+                "similarity_boost": 0.75,
+                "style": 1,
+                "use_speaker_boost": True
+            }
         }
     )
-    return response.content
+
+    if tts_response.status_code != 200:
+        print("TTS failed", tts_response.text)
+        return jsonify({"text": rephrased_text, "audio": None})
+
+    audio_data = tts_response.content
+    print("Audio size:", len(audio_data))
+
+    audio_base64 = base64.b64encode(audio_data).decode("utf-8")
+    audio_src = f"data:audio/mpeg;base64,{audio_base64}"
+    print("Audio base64 preview:", audio_src[:100])
+
+    return jsonify({"text": rephrased_text, "audio": audio_src})
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
