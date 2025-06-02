@@ -1,41 +1,15 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>المساعد الصوتي للتقارير</title>
-  <style>
-    body {
-      font-family: 'Segoe UI', sans-serif;
-      text-align: center;
-      padding: 30px;
-      direction: rtl;
-    }
-    button {
-      font-size: 18px;
-      padding: 10px 20px;
-      margin-top: 20px;
-      cursor: pointer;
-    }
-    #response {
-      margin-top: 30px;
-      font-size: 20px;
-      white-space: pre-wrap;
-      line-height: 1.6;
-      background-color: #f0f0f0;
-      padding: 20px;
-      border-radius: 12px;
-    }
-  </style>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Voice Assistant</title>
 </head>
 <body>
-  <h1>🎙️ المساعد الصوتي للتقارير الجنائية</h1>
-  <p>اضغط على الزر وابدأ التحدث، سيتم إرسال الصوت وتحليله، وستسمع الرد فوراً.</p>
-  
-  <button id="recordButton">🎤 بدء التسجيل</button>
-
-  <div id="response"></div>
-
-  <script src="/static/script.js"></script>
+  <h1>🎙️ Voice Assistant is running</h1>
+  <button id="start">🎤 Start Recording</button>
+  <button id="stop" disabled>⏹️ Stop Recording</button>
+  <p id="responseText"></p>
+  <script src="script.js"></script>
 </body>
 </html>
