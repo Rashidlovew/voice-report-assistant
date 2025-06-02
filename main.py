@@ -1,15 +1,13 @@
+# ✅ main.py (Non-streaming working version)
 import os
 import base64
 import tempfile
 import requests
-import json
-import urllib3
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -18,12 +16,30 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
 CORS(app)
 
+def generate_speech(text):
+    url = "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr"
+    headers = {
+        "xi-api-key": ELEVENLABS_KEY,
+        "Content-Type": "application/json",
+        "Accept": "audio/mpeg"
+    }
+    payload = {
+        "text": text,
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.75
+        },
+        "output_format": "mp3_44100_128"
+    }
+    response = requests.post(url, headers=headers, json=payload)
+    return response.content
+
 @app.route("/")
-def index():
+def home():
     return render_template("index.html")
 
 @app.route("/submitAudio", methods=["POST"])
-def submit_audio():
+def handle_audio():
     try:
         data = request.get_json()
         audio_data = data["audio"]
@@ -33,94 +49,49 @@ def submit_audio():
             audio_base64 = audio_data
 
         audio_bytes = base64.b64decode(audio_base64)
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+            f.write(audio_bytes)
+            webm_path = f.name
 
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
-            temp_file.write(audio_bytes)
-            temp_path = temp_file.name
+        wav_path = webm_path.replace(".webm", ".wav")
+        AudioSegment.from_file(webm_path).export(wav_path, format="wav")
 
-        wav_path = temp_path.replace(".webm", ".wav")
-        sound = AudioSegment.from_file(temp_path)
-        sound.export(wav_path, format="wav")
-
-        with open(wav_path, "rb") as audio_file:
+        with open(wav_path, "rb") as f:
             transcript = client.audio.transcriptions.create(
                 model="whisper-1",
-                file=audio_file,
+                file=f,
                 response_format="text"
             )
 
-        text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
+        user_text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
 
-        gpt_response = client.chat.completions.create(
+        gpt_reply = client.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
-                {"role": "user", "content": f"النص المُرسل: {text}"}
+                {"role": "system", "content": "أنت مساعد صوتي يتحدث العربية ويقدم ردوداً بشرية"},
+                {"role": "user", "content": user_text}
             ]
         )
-        enhanced_text = gpt_response.choices[0].message.content.strip()
+        final_text = gpt_reply.choices[0].message.content.strip()
 
-        audio_mp3 = stream_speech(enhanced_text)
-
+        audio_output = generate_speech(final_text)
         with open("test_response.mp3", "wb") as f:
-            f.write(audio_mp3)
-
-        print("✅ AUDIO SIZE:", len(audio_mp3), "bytes")
+            f.write(audio_output)
 
         return jsonify({
-            "transcript": text,
-            "response": enhanced_text,
-            "audio": base64.b64encode(audio_mp3).decode("utf-8")
+            "transcript": user_text,
+            "response": final_text,
+            "audio": base64.b64encode(audio_output).decode("utf-8")
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/fieldPrompt")
-def field_prompt():
-    text = request.args.get("text", "مرحباً، كيف حالك اليوم؟")
-    audio = stream_speech(text)
-    return jsonify({
-        "prompt": text,
-        "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
-    })
-
 @app.route("/download-audio")
-def download_audio():
-    filepath = "test_response.mp3"
-    if os.path.exists(filepath):
-        return send_file(filepath, mimetype="audio/mpeg", as_attachment=True)
-    else:
-        return "Audio not found", 404
-
-# ✅ ElevenLabs streaming using urllib3
-def stream_speech(text):
-    http = urllib3.PoolManager()
-    encoded_body = json.dumps({
-        "text": text,
-        "voice_settings": {
-            "stability": 0.3,
-            "similarity_boost": 0.75
-        },
-        "output_format": "mp3_44100_128"
-    }).encode("utf-8")
-
-    response = http.request(
-        "POST",
-        "https://api.elevenlabs.io/v1/text-to-speech/9BWtsMlNQrJLRac0k9x3/stream",  # Aria
-        body=encoded_body,
-        headers={
-            "Content-Type": "application/json",
-            "xi-api-key": ELEVENLABS_KEY,
-            "Accept": "audio/mpeg"
-        },
-        preload_content=False
-    )
-
-    audio_data = b"".join(response.stream(4096))
-    response.release_conn()
-
-    return audio_data
+def download():
+    if os.path.exists("test_response.mp3"):
+        return send_file("test_response.mp3", mimetype="audio/mpeg")
+    return "No file found.", 404
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
