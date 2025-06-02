@@ -57,14 +57,10 @@ def submit_audio():
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
+        audio_mp3 = stream_speech(enhanced_text)
 
-        audio_mp3 = generate_speech(enhanced_text)
-
-        # ✅ Save audio file for debugging
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
-
-        print("Audio size in bytes:", len(audio_mp3))
 
         return jsonify({
             "transcript": text,
@@ -78,29 +74,47 @@ def submit_audio():
 @app.route("/fieldPrompt")
 def field_prompt():
     text = request.args.get("text", "مرحباً، كيف حالك اليوم؟")
-    audio = generate_speech(text)
+    audio = stream_speech(text)
     return jsonify({
         "prompt": text,
         "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
     })
 
-def generate_speech(text):
-    url = "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr"
-    headers = {
-        "xi-api-key": ELEVENLABS_KEY,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg"
-    }
-    json_data = {
-        "text": text,
-        "voice_settings": {
-            "stability": 0.4,
-            "similarity_boost": 0.8
-        },
-        "output_format": "mp3_44100_128"
-    }
+@app.route("/download-audio")
+def download_audio():
+    try:
+        with open("test_response.mp3", "rb") as f:
+            audio_data = f.read()
+        encoded = base64.b64encode(audio_data).decode("utf-8")
+        return f"""
+        <html><body>
+        <h3>AI Audio Output:</h3>
+        <audio controls autoplay>
+            <source src="data:audio/mp3;base64,{encoded}" type="audio/mp3">
+            Your browser does not support the audio tag.
+        </audio>
+        </body></html>
+        """
+    except Exception as e:
+        return f"Error loading audio: {str(e)}"
 
-    response = requests.post(url, headers=headers, json=json_data)
+def stream_speech(text):
+    response = requests.post(
+        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr/stream",
+        headers={
+            "xi-api-key": ELEVENLABS_KEY,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"
+        },
+        json={
+            "text": text,
+            "voice_settings": {
+                "stability": 0.3,
+                "similarity_boost": 0.75
+            },
+            "output_format": "mp3_44100_128"
+        }
+    )
     return response.content
 
 if __name__ == "__main__":
