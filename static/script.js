@@ -1,62 +1,40 @@
 let mediaRecorder;
 let audioChunks = [];
-let isRecording = false;
+const startBtn = document.getElementById("start");
+const stopBtn = document.getElementById("stop");
+const responseText = document.getElementById("responseText");
 
-async function startRecording() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
-    audioChunks = [];
+startBtn.onclick = async () => {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
 
-    mediaRecorder.ondataavailable = event => {
-        if (event.data.size > 0) {
-            audioChunks.push(event.data);
-        }
-    };
+  mediaRecorder.ondataavailable = e => {
+    if (e.data.size > 0) audioChunks.push(e.data);
+  };
 
-    mediaRecorder.onstop = async () => {
-        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
-        const formData = new FormData();
-        formData.append("file", audioBlob, "recording.wav");
+  mediaRecorder.onstop = async () => {
+    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "recording.webm");
 
-        const response = await fetch("/submitAudio", {
-            method: "POST",
-            body: formData,
-        });
+    const res = await fetch("/submitAudio", { method: "POST", body: formData });
+    const data = await res.json();
+    responseText.textContent = data.text || data.error || "No response.";
 
-        if (!response.ok) {
-            alert("Error: " + response.status);
-            return;
-        }
-
-        const data = await response.json();
-        const resultText = data.text || "No text returned";
-        const audioBase64 = data.audio || null;
-
-        document.getElementById("responseText").innerText = resultText;
-
-        if (audioBase64) {
-            const audio = new Audio(audioBase64);
-            audio.play();
-        } else {
-            alert("No audio was returned.");
-        }
-    };
-
-    mediaRecorder.start();
-    isRecording = true;
-    document.getElementById("recordButton").innerText = "⏹️ Stop Recording";
-}
-
-function stopRecording() {
-    mediaRecorder.stop();
-    isRecording = false;
-    document.getElementById("recordButton").innerText = "🎙️ Start Recording";
-}
-
-document.getElementById("recordButton").addEventListener("click", () => {
-    if (isRecording) {
-        stopRecording();
-    } else {
-        startRecording();
+    if (data.audio_url) {
+      const audio = new Audio(data.audio_url);
+      audio.play();
     }
-});
+  };
+
+  mediaRecorder.start();
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+};
+
+stopBtn.onclick = () => {
+  mediaRecorder.stop();
+  startBtn.disabled = false;
+  stopBtn.disabled = true;
+};
