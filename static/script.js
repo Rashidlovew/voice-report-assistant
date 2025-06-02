@@ -39,8 +39,8 @@ recordButton.addEventListener("click", async () => {
         return;
       }
 
-      document.getElementById("transcript").innerText = "🗣️ You said: " + data.transcript;
-      document.getElementById("aiResponse").innerText = "🤖 AI: " + data.response;
+      document.getElementById("transcript").innerText = "🗣️ قلت: " + data.transcript;
+      document.getElementById("aiResponse").innerText = "🤖 المساعد: " + data.response;
 
       if (data.audio) {
         const audio = new Audio("data:audio/mpeg;base64," + data.audio);
