@@ -60,3 +60,8 @@ startButton.addEventListener("click", async () => {
         startButton.innerText = "⏹️ Stop";
         isRecording = true;
     } else {
+        mediaRecorder.stop();
+        startButton.innerText = "🎙️ Start Talking";
+        isRecording = false;
+    }
+});
