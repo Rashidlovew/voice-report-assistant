@@ -7,7 +7,7 @@ from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load environment variables
+# Environment keys
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -57,13 +57,11 @@ def submit_audio():
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
+        audio_mp3 = generate_speech(enhanced_text)
 
-        audio_mp3 = generate_speech()  # <== Use hardcoded speech below
-
+        # Save audio locally for browser download/debug
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
-
-        print("Audio size in bytes:", len(audio_mp3))
 
         return jsonify({
             "transcript": text,
@@ -79,36 +77,27 @@ def download_audio():
     try:
         with open("test_response.mp3", "rb") as f:
             audio_data = f.read()
-        encoded = base64.b64encode(audio_data).decode("utf-8")
-        return f"""
-        <html><body>
-        <h3>AI Audio Output:</h3>
-        <audio controls autoplay>
-            <source src="data:audio/mp3;base64,{encoded}" type="audio/mp3">
-            Your browser does not support the audio tag.
-        </audio>
-        </body></html>
-        """
-    except Exception as e:
-        return f"Error loading audio: {str(e)}"
+        return f"data:audio/mpeg;base64,{base64.b64encode(audio_data).decode()}"
+    except:
+        return "Audio file not found", 404
 
-def generate_speech():
-    url = "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr"
-    headers = {
-        "xi-api-key": ELEVENLABS_KEY,
-        "Content-Type": "application/json",
-        "Accept": "audio/mpeg"
-    }
-    json_data = {
-        "text": "مرحباً بك في النظام الصوتي، كيف يمكنني مساعدتك؟",  # 🔥 Hardcoded test phrase
-        "voice_settings": {
-            "stability": 0.4,
-            "similarity_boost": 0.8
+def generate_speech(text):
+    response = requests.post(
+        "https://api.elevenlabs.io/v1/text-to-speech/jN1a8k1Wv56Yf63YzCYr",
+        headers={
+            "xi-api-key": ELEVENLABS_KEY,
+            "Content-Type": "application/json",
+            "Accept": "audio/mpeg"
         },
-        "output_format": "mp3_44100_128"
-    }
-
-    response = requests.post(url, headers=headers, json=json_data)
+        json={
+            "text": text,
+            "voice_settings": {
+                "stability": 0.3,
+                "similarity_boost": 0.75
+            },
+            "output_format": "mp3_44100_128"
+        }
+    )
     return response.content
 
 if __name__ == "__main__":
