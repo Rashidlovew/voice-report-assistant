@@ -1,58 +1,18 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <title>مساعد التقارير الصوتية</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #f8f9fa;
-            text-align: center;
-            padding: 30px;
-            direction: rtl;
-        }
-        h1 {
-            color: #343a40;
-        }
-        button {
-            margin: 10px;
-            padding: 12px 24px;
-            font-size: 16px;
-            border: none;
-            border-radius: 10px;
-            background-color: #007bff;
-            color: white;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        #status {
-            margin-top: 20px;
-            font-size: 18px;
-            color: #555;
-        }
-        #originalText, #responseText {
-            margin-top: 20px;
-            font-size: 18px;
-            background-color: #ffffff;
-            border: 1px solid #ddd;
-            padding: 10px;
-            border-radius: 10px;
-            max-width: 600px;
-            margin-left: auto;
-            margin-right: auto;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>مساعد تقارير الشرطة</title>
 </head>
-<body>
-    <h1>🎙️ مساعد التقارير الصوتية</h1>
-    <button onclick="startRecording()">ابدأ التسجيل</button>
-    <button onclick="stopRecording()">⏹️ إيقاف</button>
-    <div id="status">🔘 اضغط على زر البدء لبدء التسجيل</div>
-    <div id="originalText"></div>
-    <div id="responseText"></div>
+<body style="font-family: Arial; text-align: center; direction: rtl;">
 
-    <script src="/static/script.js"></script>
+  <h2>🎤 مساعد تقارير الشرطة بالصوت</h2>
+  <button id="recordButton">🔴 تسجيل</button>
+  <button id="stopButton" disabled>⏹️ إيقاف</button>
+
+  <p id="transcript">🗣️ ما تقوله سيظهر هنا...</p>
+  <p id="aiResponse">🤖 رد المساعد سيظهر هنا...</p>
+
+  <script src="/static/script.js"></script>
 </body>
 </html>
