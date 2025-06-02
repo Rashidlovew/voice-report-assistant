@@ -2,7 +2,7 @@ import os
 import base64
 import tempfile
 import requests
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
@@ -47,7 +47,6 @@ def submit_audio():
                 response_format="text"
             )
 
-        # Handle both string and object responses
         text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
 
         gpt_response = client.chat.completions.create(
@@ -58,13 +57,13 @@ def submit_audio():
             ]
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
+
         audio_mp3 = stream_speech(enhanced_text)
 
-        # ✅ Debug: Save the audio file locally for testing
+        # ✅ Debug: Save the audio for testing
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
 
-        # ✅ Debug: Print size of the audio
         print("AUDIO LENGTH:", len(audio_mp3), "bytes")
 
         return jsonify({
@@ -84,6 +83,15 @@ def field_prompt():
         "prompt": text,
         "audio": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
     })
+
+# ✅ New: Download saved audio for testing
+@app.route("/download-audio")
+def download_audio():
+    filepath = "test_response.mp3"
+    if os.path.exists(filepath):
+        return send_file(filepath, mimetype="audio/mpeg", as_attachment=True)
+    else:
+        return "Audio not found", 404
 
 def stream_speech(text):
     response = requests.post(
