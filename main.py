@@ -2,12 +2,14 @@ import os
 import base64
 import tempfile
 import requests
+import json
+import urllib3
 from flask import Flask, request, jsonify, render_template, send_file
 from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
-# Load API keys
+# Load keys from environment
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
 
@@ -60,11 +62,10 @@ def submit_audio():
 
         audio_mp3 = stream_speech(enhanced_text)
 
-        # Save and report size
         with open("test_response.mp3", "wb") as f:
             f.write(audio_mp3)
 
-        print("AUDIO LENGTH:", len(audio_mp3), "bytes")
+        print("✅ AUDIO SIZE:", len(audio_mp3), "bytes")
 
         return jsonify({
             "transcript": text,
@@ -92,30 +93,32 @@ def download_audio():
     else:
         return "Audio not found", 404
 
-# ✅ ElevenLabs streaming with your working voice (Aria)
+# ✅ ElevenLabs streaming using urllib3
 def stream_speech(text):
-    response = requests.post(
-        "https://api.elevenlabs.io/v1/text-to-speech/9BWtsMlNQrJLRac0k9x3/stream",  # Aria voice ID
+    http = urllib3.PoolManager()
+    encoded_body = json.dumps({
+        "text": text,
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.75
+        },
+        "output_format": "mp3_44100_128"
+    }).encode("utf-8")
+
+    response = http.request(
+        "POST",
+        "https://api.elevenlabs.io/v1/text-to-speech/9BWtsMlNQrJLRac0k9x3/stream",  # Aria
+        body=encoded_body,
         headers={
-            "xi-api-key": ELEVENLABS_KEY,
             "Content-Type": "application/json",
+            "xi-api-key": ELEVENLABS_KEY,
             "Accept": "audio/mpeg"
         },
-        json={
-            "text": text,
-            "voice_settings": {
-                "stability": 0.3,
-                "similarity_boost": 0.75
-            },
-            "output_format": "mp3_44100_128"
-        },
-        stream=True
+        preload_content=False
     )
 
-    audio_data = b""
-    for chunk in response.iter_content(chunk_size=4096):
-        if chunk:
-            audio_data += chunk
+    audio_data = b"".join(response.stream(4096))
+    response.release_conn()
 
     return audio_data
 
