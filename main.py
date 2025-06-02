@@ -108,9 +108,17 @@ def stream_speech(text):
                 "similarity_boost": 0.75
             },
             "output_format": "mp3_44100_128"
-        }
+        },
+        stream=True  # ✅ Enable chunked response
     )
-    return response.content
+
+    audio_data = b""
+    for chunk in response.iter_content(chunk_size=4096):
+        if chunk:
+            audio_data += chunk
+
+    return audio_data
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
