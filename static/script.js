@@ -6,9 +6,10 @@ const startButton = document.getElementById("start-button");
 const statusText = document.getElementById("status");
 const responseArea = document.getElementById("response");
 
-// ✅ Convert base64 → binary → playable audio
+// ✅ Updated: Play audio safely from base64 (removes data: prefix if exists)
 function playAudioFromBase64(base64Audio) {
-    const byteCharacters = atob(base64Audio);
+    const cleanBase64 = base64Audio.split(",").pop();  // Remove any prefix like 'data:audio/...'
+    const byteCharacters = atob(cleanBase64);
     const byteNumbers = new Array(byteCharacters.length);
     for (let i = 0; i < byteCharacters.length; i++) {
         byteNumbers[i] = byteCharacters.charCodeAt(i);
@@ -20,8 +21,9 @@ function playAudioFromBase64(base64Audio) {
     const audio = new Audio(audioUrl);
     audio.play().catch(err => console.error("🔴 Audio play error:", err));
 
+    // 🔁 Automatically start next recording when AI finishes speaking
     audio.onended = () => {
-        setTimeout(() => startButton.click(), 300);
+        setTimeout(() => startButton.click(), 300); // slight pause for realism
     };
 }
 
@@ -61,7 +63,9 @@ startButton.addEventListener("click", async () => {
                     responseArea.value += `\n👤 أنت: ${result.transcript}\n🤖 AI: ${result.response}\n`;
                     statusText.innerText = "🤖 AI: " + result.response;
 
+                    // ✅ Play AI response
                     playAudioFromBase64(result.audio);
+
                 } catch (err) {
                     console.error("❌ Error sending audio:", err);
                     statusText.innerText = "❌ Failed to process your audio.";
