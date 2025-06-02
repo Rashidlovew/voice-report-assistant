@@ -1,63 +1,62 @@
 let mediaRecorder;
 let audioChunks = [];
+let isRecording = false;
 
-const recordButton = document.getElementById("recordButton");
-const stopButton = document.getElementById("stopButton");
+async function startRecording() {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
 
-recordButton.addEventListener("click", async () => {
-  recordButton.disabled = true;
-  stopButton.disabled = false;
-  audioChunks = [];
-
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-
-  mediaRecorder.ondataavailable = event => {
-    if (event.data.size > 0) {
-      audioChunks.push(event.data);
-    }
-  };
-
-  mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const reader = new FileReader();
-
-    reader.onloadend = async () => {
-      const base64Audio = reader.result;
-
-      const response = await fetch("/submitAudio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio: base64Audio })
-      });
-
-      const data = await response.json();
-
-      if (data.error) {
-        console.error("❌ Server Error:", data.error);
-        document.getElementById("aiResponse").innerText = "❌ Error: " + data.error;
-        return;
-      }
-
-      document.getElementById("transcript").innerText = "🗣️ قلت: " + data.transcript;
-      document.getElementById("aiResponse").innerText = "🤖 المساعد: " + data.response;
-
-      if (data.audio) {
-        const audio = new Audio("data:audio/mpeg;base64," + data.audio);
-        audio.play();
-      } else {
-        console.error("⚠️ No audio found in response.");
-      }
+    mediaRecorder.ondataavailable = event => {
+        if (event.data.size > 0) {
+            audioChunks.push(event.data);
+        }
     };
 
-    reader.readAsDataURL(audioBlob);
-  };
+    mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+        const formData = new FormData();
+        formData.append("file", audioBlob, "recording.wav");
 
-  mediaRecorder.start();
-});
+        const response = await fetch("/submitAudio", {
+            method: "POST",
+            body: formData,
+        });
 
-stopButton.addEventListener("click", () => {
-  stopButton.disabled = true;
-  recordButton.disabled = false;
-  mediaRecorder.stop();
+        if (!response.ok) {
+            alert("Error: " + response.status);
+            return;
+        }
+
+        const data = await response.json();
+        const resultText = data.text || "No text returned";
+        const audioBase64 = data.audio || null;
+
+        document.getElementById("responseText").innerText = resultText;
+
+        if (audioBase64) {
+            const audio = new Audio(audioBase64);
+            audio.play();
+        } else {
+            alert("No audio was returned.");
+        }
+    };
+
+    mediaRecorder.start();
+    isRecording = true;
+    document.getElementById("recordButton").innerText = "⏹️ Stop Recording";
+}
+
+function stopRecording() {
+    mediaRecorder.stop();
+    isRecording = false;
+    document.getElementById("recordButton").innerText = "🎙️ Start Recording";
+}
+
+document.getElementById("recordButton").addEventListener("click", () => {
+    if (isRecording) {
+        stopRecording();
+    } else {
+        startRecording();
+    }
 });
