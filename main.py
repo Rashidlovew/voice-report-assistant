@@ -28,7 +28,7 @@ def submit_audio():
         if "," in audio_data:
             audio_base64 = audio_data.split(",")[1]
         else:
-            return jsonify({"error": "Invalid audio format"}), 400
+            audio_base64 = audio_data
 
         audio_bytes = base64.b64decode(audio_base64)
 
@@ -59,6 +59,13 @@ def submit_audio():
         )
         enhanced_text = gpt_response.choices[0].message.content.strip()
         audio_mp3 = stream_speech(enhanced_text)
+
+        # ✅ Debug: Save the audio file locally for testing
+        with open("test_response.mp3", "wb") as f:
+            f.write(audio_mp3)
+
+        # ✅ Debug: Print size of the audio
+        print("AUDIO LENGTH:", len(audio_mp3), "bytes")
 
         return jsonify({
             "transcript": text,
