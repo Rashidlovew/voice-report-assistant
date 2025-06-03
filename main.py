@@ -1,33 +1,30 @@
-from flask import Flask, request, jsonify, send_from_directory, Response
-from flask_cors import CORS
+# main.py
 import os
+import base64
 import tempfile
 import requests
-import base64
+from flask import Flask, request, jsonify, Response, render_template
+from flask_cors import CORS
 from pydub import AudioSegment
 from openai import OpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
-client = OpenAI(api_key=OPENAI_API_KEY)
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
 
-app = Flask(__name__)
+client = OpenAI(api_key=OPENAI_API_KEY)
+app = Flask(__name__, static_url_path='/static')
 CORS(app)
 
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
+    return render_template("index.html")
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
     try:
         data = request.get_json()
-        audio_data = data["audio"]
-        if "," in audio_data:
-            audio_base64 = audio_data.split(",")[1]
-        else:
-            audio_base64 = audio_data
-
+        audio_base64 = data["audio"].split(",")[-1]
         audio_bytes = base64.b64decode(audio_base64)
 
         with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
@@ -64,40 +61,30 @@ def submit_audio():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route("/stream-audio", methods=["POST"])
+@app.route("/stream-audio")
 def stream_audio():
-    try:
-        data = request.get_json()
-        text = data.get("text", "")
-        voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
+    text = request.args.get("text", "")
+    return Response(elevenlabs_stream(text), mimetype="audio/mpeg")
 
-        headers = {
-            "xi-api-key": ELEVENLABS_KEY,
-            "Accept": "audio/mpeg",
-            "Content-Type": "application/json"
+def elevenlabs_stream(text):
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}/stream"
+    headers = {
+        "xi-api-key": ELEVENLABS_KEY,
+        "Accept": "audio/mpeg",
+        "Content-Type": "application/json"
+    }
+    payload = {
+        "text": text,
+        "model_id": "eleven_multilingual_v2",
+        "voice_settings": {
+            "stability": 0.3,
+            "similarity_boost": 0.75
         }
-
-        payload = {
-            "text": text,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {
-                "stability": 0.3,
-                "similarity_boost": 0.75
-            },
-            "stream": True
-        }
-
-        def generate():
-            with requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
-                               headers=headers, json=payload, stream=True) as r:
-                for chunk in r.iter_content(chunk_size=1024):
-                    if chunk:
-                        yield chunk
-
-        return Response(generate(), mimetype="audio/mpeg")
-
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+    }
+    r = requests.post(url, headers=headers, json=payload, stream=True)
+    for chunk in r.iter_content(chunk_size=1024):
+        if chunk:
+            yield chunk
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
