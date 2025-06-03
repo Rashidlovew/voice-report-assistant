@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Voice Assistant</title>
+    <meta charset="UTF-8">
+    <title>🎙️ AI Voice Assistant</title>
 </head>
 <body>
-  <h1>🎙️ Voice Assistant is running</h1>
-  <button id="start">🎤 Start Recording</button>
-  <button id="stop" disabled>⏹️ Stop Recording</button>
-  <p id="responseText"></p>
-  <script src="script.js"></script>
+    <h1>🎤 Talk to the Assistant</h1>
+    <button id="startBtn">Start Recording</button>
+    <button id="stopBtn" disabled>Stop Recording</button>
+    <p><strong>Transcription:</strong> <span id="transcript"></span></p>
+    <p><strong>Response:</strong> <span id="response"></span></p>
+    <audio id="audioPlayer" controls autoplay></audio>
+
+    <script src="static/script.js"></script>
 </body>
 </html>
