@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, Response
+from flask import Flask, request, jsonify, send_from_directory, Response
 from flask_cors import CORS
 import os
 import tempfile
@@ -16,7 +16,7 @@ CORS(app)
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return send_from_directory("static", "index.html")
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
