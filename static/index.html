@@ -2,16 +2,18 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>🎙️ AI Voice Assistant</title>
+    <title>🎙️ Talk to the Assistant</title>
 </head>
 <body>
-    <h1>🎤 Talk to the Assistant</h1>
+    <h2>🎤 Talk to the Assistant</h2>
     <button id="startBtn">Start Recording</button>
     <button id="stopBtn" disabled>Stop Recording</button>
+
     <p><strong>Transcription:</strong> <span id="transcript"></span></p>
     <p><strong>Response:</strong> <span id="response"></span></p>
-    <audio id="audioPlayer" controls autoplay></audio>
 
-    <script src="static/script.js"></script>
+    <audio id="audioPlayer" controls></audio>
+
+    <script src="script.js"></script>
 </body>
 </html>
