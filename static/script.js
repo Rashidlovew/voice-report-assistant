@@ -31,18 +31,45 @@ startBtn.addEventListener("click", async () => {
                     });
 
                     const result = await response.json();
+
+                    if (result.error) {
+                        transcriptionText.textContent = "❌ Error: " + result.error;
+                        return;
+                    }
+
                     transcriptionText.textContent = result.transcript;
                     responseText.textContent = result.response;
 
-                    // Play streaming audio from server
-                    const audio = new Audio(`/stream-audio?text=${encodeURIComponent(result.response)}`);
-                    audio.play();
+                    // 🔊 Live streaming audio using MediaSource
+                    const streamUrl = `/stream-audio?text=${encodeURIComponent(result.response)}`;
+                    const mediaSource = new MediaSource();
+                    audioPlayer.src = URL.createObjectURL(mediaSource);
 
-                    audio.onended = () => {
-                        startBtn.click();  // loop again
+                    mediaSource.addEventListener("sourceopen", () => {
+                        const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
+                        fetch(streamUrl)
+                            .then(res => {
+                                const reader = res.body.getReader();
+                                const pump = () => reader.read().then(({ done, value }) => {
+                                    if (done) {
+                                        mediaSource.endOfStream();
+                                        return;
+                                    }
+                                    sourceBuffer.appendBuffer(value);
+                                    pump();
+                                });
+                                pump();
+                            });
+                    });
+
+                    audioPlayer.play();
+                    audioPlayer.onended = () => {
+                        startBtn.click(); // 🔁 auto start next round
                     };
+
                 } catch (err) {
-                    console.error("Error:", err);
+                    console.error("❌ Audio send error:", err);
+                    transcriptionText.textContent = "❌ Error sending audio.";
                 }
             };
             reader.readAsDataURL(audioBlob);
