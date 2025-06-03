@@ -1,65 +1,100 @@
-
-```python
-from flask import Flask, request, jsonify, send_from_directory
-from flask_cors import CORS
+# === main.py ===
 import os
+import base64
 import tempfile
 import requests
+from flask import Flask, request, jsonify, Response, render_template
+from flask_cors import CORS
+from pydub import AudioSegment
+from openai import OpenAI
+
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
 CORS(app)
 
-ELEVENLABS_API_KEY = os.environ.get("ELEVENLABS_API_KEY")
-VOICE_ID = os.environ.get("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
-
 @app.route("/")
 def index():
-    return send_from_directory("static", "index.html")
-
-@app.route("/static/<path:filename>")
-def serve_static(filename):
-    return send_from_directory("static", filename)
+    return render_template("index.html")
 
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
-    if 'audio' not in request.files:
-        return jsonify({"error": "No audio file"}), 400
+    try:
+        data = request.get_json()
+        audio_data = data["audio"]
+        if "," in audio_data:
+            audio_base64 = audio_data.split(",")[1]
+        else:
+            audio_base64 = audio_data
 
-    audio_file = request.files['audio']
+        audio_bytes = base64.b64decode(audio_base64)
 
-    # Save temporarily
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as tmp:
-        audio_file.save(tmp.name)
-        tmp_path = tmp.name
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
+            temp_file.write(audio_bytes)
+            temp_path = temp_file.name
 
-    # Transcribe (replace with Whisper/OpenAI later if needed)
-    transcript = "You said something."
+        wav_path = temp_path.replace(".webm", ".wav")
+        sound = AudioSegment.from_file(temp_path)
+        sound.export(wav_path, format="wav")
 
-    # Generate TTS
-    tts_response = requests.post(
-        f"https://api.elevenlabs.io/v1/text-to-speech/{VOICE_ID}",
-        headers={
-            "xi-api-key": ELEVENLABS_API_KEY,
-            "Content-Type": "application/json",
-        },
-        json={
-            "text": transcript,
-            "model_id": "eleven_multilingual_v2",
-            "voice_settings": {"stability": 0.5, "similarity_boost": 0.75}
-        }
-    )
+        with open(wav_path, "rb") as audio_file:
+            transcript = client.audio.transcriptions.create(
+                model="whisper-1",
+                file=audio_file,
+                response_format="text"
+            )
 
-    if tts_response.status_code != 200:
-        return jsonify({"error": "TTS failed"}), 500
+        text = transcript.strip() if isinstance(transcript, str) else transcript.text.strip()
 
-    audio_path = os.path.join("static", "response.mp3")
-    with open(audio_path, "wb") as f:
-        f.write(tts_response.content)
+        gpt_response = client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": "You are a helpful Arabic-speaking police assistant."},
+                {"role": "user", "content": f"النص المُرسل: {text}"}
+            ]
+        )
+        enhanced_text = gpt_response.choices[0].message.content.strip()
 
-    return jsonify({
-        "text": transcript,
-        "audio_url": "/static/response.mp3"
-    })
+        return jsonify({
+            "transcript": text,
+            "response": enhanced_text
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/stream-audio", methods=["POST"])
+def stream_audio():
+    data = request.get_json()
+    text = data.get("text", "")
+    voice_id = "21m00Tcm4TlvDq8ikWAM"
+
+    def generate():
+        response = requests.post(
+            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
+            headers={
+                "xi-api-key": ELEVENLABS_KEY,
+                "Content-Type": "application/json",
+                "Accept": "audio/mpeg"
+            },
+            json={
+                "text": text,
+                "model_id": "eleven_multilingual_v2",
+                "voice_settings": {
+                    "stability": 0.3,
+                    "similarity_boost": 0.75
+                }
+            },
+            stream=True
+        )
+        for chunk in response.iter_content(chunk_size=1024):
+            if chunk:
+                yield chunk
+
+    return Response(generate(), content_type="audio/mpeg")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
