@@ -1,40 +1,57 @@
 let mediaRecorder;
 let audioChunks = [];
-const startBtn = document.getElementById("start");
-const stopBtn = document.getElementById("stop");
+
+const startBtn = document.getElementById("startBtn");
+const stopBtn = document.getElementById("stopBtn");
+const transcriptText = document.getElementById("transcriptText");
 const responseText = document.getElementById("responseText");
 
 startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  stopBtn.disabled = false;
+
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   mediaRecorder = new MediaRecorder(stream);
   audioChunks = [];
 
-  mediaRecorder.ondataavailable = e => {
-    if (e.data.size > 0) audioChunks.push(e.data);
+  mediaRecorder.ondataavailable = event => {
+    if (event.data.size > 0) audioChunks.push(event.data);
   };
 
   mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "recording.webm");
+    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+    const reader = new FileReader();
 
-    const res = await fetch("/submitAudio", { method: "POST", body: formData });
-    const data = await res.json();
-    responseText.textContent = data.text || data.error || "No response.";
+    reader.onloadend = async () => {
+      const base64Audio = reader.result;
 
-    if (data.audio_url) {
-      const audio = new Audio(data.audio_url);
-      audio.play();
-    }
+      const response = await fetch("/submitAudio", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ audio: base64Audio })
+      });
+
+      const result = await response.json();
+
+      if (result.transcript) transcriptText.textContent = result.transcript;
+      if (result.response) responseText.textContent = result.response;
+
+      if (result.audio) {
+        const audio = new Audio(`data:audio/mpeg;base64,${result.audio}`);
+        audio.play();
+      }
+    };
+
+    reader.readAsDataURL(audioBlob);
   };
 
   mediaRecorder.start();
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
 };
 
 stopBtn.onclick = () => {
-  mediaRecorder.stop();
-  startBtn.disabled = false;
   stopBtn.disabled = true;
+  startBtn.disabled = false;
+  mediaRecorder.stop();
 };
