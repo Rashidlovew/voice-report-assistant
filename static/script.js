@@ -1,57 +1,59 @@
+let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
 
 const startBtn = document.getElementById("startBtn");
-const stopBtn = document.getElementById("stopBtn");
-const transcriptText = document.getElementById("transcriptText");
+const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
+const audioPlayer = document.getElementById("audioPlayer");
 
-startBtn.onclick = async () => {
-  startBtn.disabled = true;
-  stopBtn.disabled = false;
+startBtn.addEventListener("click", async () => {
+    if (!isRecording) {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
 
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
+        mediaRecorder.addEventListener("dataavailable", event => {
+            audioChunks.push(event.data);
+        });
 
-  mediaRecorder.ondataavailable = event => {
-    if (event.data.size > 0) audioChunks.push(event.data);
-  };
+        mediaRecorder.addEventListener("stop", async () => {
+            const audioBlob = new Blob(audioChunks);
+            const reader = new FileReader();
+            reader.onloadend = async () => {
+                const base64Audio = reader.result;
 
-  mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-    const reader = new FileReader();
+                try {
+                    const response = await fetch("/submitAudio", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ audio: base64Audio })
+                    });
 
-    reader.onloadend = async () => {
-      const base64Audio = reader.result;
+                    const result = await response.json();
+                    transcriptionText.textContent = result.transcript;
+                    responseText.textContent = result.response;
 
-      const response = await fetch("/submitAudio", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify({ audio: base64Audio })
-      });
+                    // Play streaming audio from server
+                    const audio = new Audio(`/stream-audio?text=${encodeURIComponent(result.response)}`);
+                    audio.play();
 
-      const result = await response.json();
+                    audio.onended = () => {
+                        startBtn.click();  // loop again
+                    };
+                } catch (err) {
+                    console.error("Error:", err);
+                }
+            };
+            reader.readAsDataURL(audioBlob);
+        });
 
-      if (result.transcript) transcriptText.textContent = result.transcript;
-      if (result.response) responseText.textContent = result.response;
-
-      if (result.audio) {
-        const audio = new Audio(`data:audio/mpeg;base64,${result.audio}`);
-        audio.play();
-      }
-    };
-
-    reader.readAsDataURL(audioBlob);
-  };
-
-  mediaRecorder.start();
-};
-
-stopBtn.onclick = () => {
-  stopBtn.disabled = true;
-  startBtn.disabled = false;
-  mediaRecorder.stop();
-};
+        mediaRecorder.start();
+        startBtn.textContent = "⏹️ Stop Recording";
+        isRecording = true;
+    } else {
+        mediaRecorder.stop();
+        startBtn.textContent = "🎙️ Start Talking";
+        isRecording = false;
+    }
+});
