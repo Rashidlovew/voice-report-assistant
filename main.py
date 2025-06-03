@@ -1,16 +1,14 @@
-# === main.py ===
+from flask import Flask, request, jsonify, render_template, Response
+from flask_cors import CORS
 import os
-import base64
 import tempfile
 import requests
-from flask import Flask, request, jsonify, Response, render_template
-from flask_cors import CORS
+import base64
 from pydub import AudioSegment
 from openai import OpenAI
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_KEY = os.getenv("ELEVENLABS_KEY")
-
 client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
@@ -68,33 +66,38 @@ def submit_audio():
 
 @app.route("/stream-audio", methods=["POST"])
 def stream_audio():
-    data = request.get_json()
-    text = data.get("text", "")
-    voice_id = "21m00Tcm4TlvDq8ikWAM"
+    try:
+        data = request.get_json()
+        text = data.get("text", "")
+        voice_id = "21m00Tcm4TlvDq8ikWAM"  # Rachel voice
 
-    def generate():
-        response = requests.post(
-            f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
-            headers={
-                "xi-api-key": ELEVENLABS_KEY,
-                "Content-Type": "application/json",
-                "Accept": "audio/mpeg"
-            },
-            json={
-                "text": text,
-                "model_id": "eleven_multilingual_v2",
-                "voice_settings": {
-                    "stability": 0.3,
-                    "similarity_boost": 0.75
-                }
-            },
-            stream=True
-        )
-        for chunk in response.iter_content(chunk_size=1024):
-            if chunk:
-                yield chunk
+        headers = {
+            "xi-api-key": ELEVENLABS_KEY,
+            "Accept": "audio/mpeg",
+            "Content-Type": "application/json"
+        }
 
-    return Response(generate(), content_type="audio/mpeg")
+        payload = {
+            "text": text,
+            "model_id": "eleven_multilingual_v2",
+            "voice_settings": {
+                "stability": 0.3,
+                "similarity_boost": 0.75
+            },
+            "stream": True
+        }
+
+        def generate():
+            with requests.post(f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}/stream",
+                               headers=headers, json=payload, stream=True) as r:
+                for chunk in r.iter_content(chunk_size=1024):
+                    if chunk:
+                        yield chunk
+
+        return Response(generate(), mimetype="audio/mpeg")
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
