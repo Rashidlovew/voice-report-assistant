@@ -5,14 +5,18 @@ let audioContext;
 let analyser;
 let sourceNode;
 let silenceTimer;
+let recordingStartTime;
 
 const startBtn = document.getElementById("startBtn");
+const statusText = document.getElementById("statusText");
 const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 const audioPlayer = document.getElementById("audioPlayer");
 
 startBtn.addEventListener("click", async () => {
     startBtn.disabled = true;
+    statusText.textContent = "🎤 Listening...";
+    console.log("🎤 Assistant started");
     startAssistant();
 });
 
@@ -37,8 +41,11 @@ async function startAssistant() {
 
     mediaRecorder.start();
     isRecording = true;
+    recordingStartTime = performance.now();
     detectSilence(() => {
-        if (isRecording) {
+        const elapsed = performance.now() - recordingStartTime;
+        if (isRecording && elapsed > 1500) {
+            console.log("🛑 Silence detected, stopping recording");
             mediaRecorder.stop();
             isRecording = false;
         }
@@ -59,7 +66,7 @@ function detectSilence(onSilence, threshold = 0.01, timeout = 1500) {
                 return;
             }
         } else {
-            silenceStart = performance.now(); // Reset timer
+            silenceStart = performance.now(); // reset timer
         }
 
         silenceTimer = requestAnimationFrame(checkSilence);
@@ -80,6 +87,8 @@ async function processAudio(audioBlob) {
     const reader = new FileReader();
     reader.onloadend = async () => {
         const base64Audio = reader.result;
+        statusText.textContent = "⏳ Transcribing and thinking...";
+        console.log("🧠 Sending audio to backend...");
 
         try {
             const response = await fetch("/submitAudio", {
@@ -92,13 +101,16 @@ async function processAudio(audioBlob) {
 
             if (result.error) {
                 transcriptionText.textContent = "❌ Error: " + result.error;
+                statusText.textContent = "❌ Error occurred";
                 return;
             }
 
             transcriptionText.textContent = result.transcript;
             responseText.textContent = result.response;
 
-            // 🔊 Play response using ElevenLabs streaming
+            statusText.textContent = "🔊 Speaking...";
+            console.log("✅ Response:", result.response);
+
             const streamUrl = `/stream-audio?text=${encodeURIComponent(result.response)}`;
             const mediaSource = new MediaSource();
             audioPlayer.src = URL.createObjectURL(mediaSource);
@@ -121,12 +133,16 @@ async function processAudio(audioBlob) {
 
             audioPlayer.play();
             audioPlayer.onended = () => {
-                startAssistant(); // 🔁 Loop again
+                console.log("🔁 Repeating loop...");
+                statusText.textContent = "🎤 Listening...";
+                startAssistant(); // loop again
             };
         } catch (err) {
             console.error("❌ Audio send error:", err);
             transcriptionText.textContent = "❌ Error sending audio.";
+            statusText.textContent = "❌ Failed to contact server.";
         }
     };
+
     reader.readAsDataURL(audioBlob);
 }
