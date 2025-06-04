@@ -58,19 +58,31 @@ function detectSilence(onSilence, threshold = 0.01, timeout = 1500) {
 
     function checkSilence() {
         analyser.getByteFrequencyData(buffer);
-        const isSilent = buffer.every(val => val < threshold * 256);
+        const averageVolume = buffer.reduce((a, b) => a + b, 0) / buffer.length;
+        const isSilent = averageVolume < threshold * 256;
+
+        console.log("🔊 Avg Volume:", averageVolume.toFixed(2), isSilent ? "(silent)" : "(speaking)");
 
         if (isSilent) {
             if (performance.now() - silenceStart > timeout) {
+                console.log("🛑 Silence threshold reached.");
                 onSilence();
                 return;
             }
         } else {
-            silenceStart = performance.now(); // reset timer
+            silenceStart = performance.now(); // reset
         }
 
         silenceTimer = requestAnimationFrame(checkSilence);
     }
+
+    // ⏱️ Safety timeout: force stop after 7 seconds
+    setTimeout(() => {
+        if (isRecording) {
+            console.log("⚠️ Force stop after 7s timeout.");
+            onSilence();
+        }
+    }, 7000);
 
     checkSilence();
 }
