@@ -65,7 +65,8 @@ async function speakText(text) {
         });
 
         audioPlayer.onended = () => {
-            resolve();
+            console.log("✅ Greeting finished, starting to record...");
+            setTimeout(() => resolve(), 500); // small delay before recording
         };
 
         audioPlayer.play().catch(e => {
