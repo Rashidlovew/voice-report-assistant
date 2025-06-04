@@ -6,10 +6,15 @@ const startBtn = document.getElementById("startBtn");
 const audioPlayer = document.getElementById("audioPlayer");
 const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
+const micIcon = document.getElementById("micIcon");
 
 startBtn.addEventListener("click", () => {
     startGreetingAndAssistant();
 });
+
+function showMicIcon(show) {
+    micIcon.style.display = show ? "inline-block" : "none";
+}
 
 function startGreetingAndAssistant() {
     console.log("🔊 Playing greeting...");
@@ -23,8 +28,6 @@ async function playAudioStream(text) {
     return new Promise((resolve) => {
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.play();
-
-        // Use event listener to detect end of audio
         audioPlayer.addEventListener("ended", function handler() {
             audioPlayer.removeEventListener("ended", handler);
             resolve();
@@ -40,7 +43,7 @@ async function startAssistant() {
             console.warn("⚠️ Force stop after 30s timeout.");
             stopRecording();
         }
-    }, 30000); // Auto stop after 30 seconds
+    }, 30000); // 30 seconds
 }
 
 async function startRecording() {
@@ -57,6 +60,7 @@ async function startRecording() {
     };
 
     mediaRecorder.onstop = async () => {
+        showMicIcon(false);
         const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
         const reader = new FileReader();
         reader.onloadend = async () => {
@@ -72,7 +76,7 @@ async function startRecording() {
 
             if (result.response) {
                 await playAudioStream(result.response);
-                startAssistant(); // Loop again
+                startAssistant();
             }
         };
         reader.readAsDataURL(audioBlob);
@@ -80,20 +84,21 @@ async function startRecording() {
 
     mediaRecorder.start();
     isRecording = true;
+    showMicIcon(true);
     console.log("🎙️ Recording started...");
 
-    // Auto stop when silence is detected (optional upgrade)
-    detectSilence(stream, stopRecording);
+    detectSilence(stream, stopRecording, 2000, 1.0);
 }
 
 function stopRecording() {
     if (!isRecording) return;
     isRecording = false;
     mediaRecorder.stop();
+    showMicIcon(false);
     console.log("🛑 Recording stopped.");
 }
 
-function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = -50) {
+function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = 1.0) {
     const audioContext = new AudioContext();
     const analyser = audioContext.createAnalyser();
     const microphone = audioContext.createMediaStreamSource(stream);
@@ -111,6 +116,8 @@ function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = -50) 
         const array = new Uint8Array(analyser.frequencyBinCount);
         analyser.getByteFrequencyData(array);
         const volume = array.reduce((a, b) => a + b) / array.length;
+
+        console.log("🎚️ Avg Volume:", volume.toFixed(2), volume < threshold ? "(silent)" : "(speaking)");
 
         if (volume > threshold) {
             lastSoundTime = Date.now();
