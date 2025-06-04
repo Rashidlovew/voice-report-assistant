@@ -162,12 +162,26 @@ async function processAudio(audioBlob) {
                 });
             });
 
-            audioPlayer.play();
-            audioPlayer.onended = () => {
-                console.log("🔁 Repeating loop...");
-                statusText.textContent = "🎤 Listening...";
-                startAssistant();
-            };
+            audioPlayer.play().then(() => {
+    console.log("▶️ Audio playing...");
+}).catch(err => {
+    console.warn("⚠️ Playback error:", err);
+});
+
+audioPlayer.addEventListener("ended", () => {
+    console.log("🔁 Repeating loop...");
+    statusText.textContent = "🎤 Listening...";
+    startAssistant();
+});
+
+// 🛡️ Fallback timeout in case 'ended' doesn't fire (e.g. on mobile)
+setTimeout(() => {
+    if (audioPlayer.paused) {
+        console.log("⏱️ Fallback restart triggered.");
+        statusText.textContent = "🎤 Listening...";
+        startAssistant();
+    }
+}, 8000);
         } catch (err) {
             console.error("❌ Audio send error:", err);
             transcriptionText.textContent = "❌ Error sending audio.";
