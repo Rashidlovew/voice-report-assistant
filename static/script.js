@@ -87,7 +87,7 @@ async function startRecording() {
     showMicIcon(true);
     console.log("🎙️ Recording started...");
 
-    detectSilence(stream, stopRecording, 2000, 1.0);
+    detectSilence(stream, stopRecording, 2000, 5);
 }
 
 function stopRecording() {
@@ -98,7 +98,7 @@ function stopRecording() {
     console.log("🛑 Recording stopped.");
 }
 
-function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = 1.0) {
+function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = 5) {
     const audioContext = new AudioContext();
     const analyser = audioContext.createAnalyser();
     const microphone = audioContext.createMediaStreamSource(stream);
@@ -113,11 +113,17 @@ function detectSilence(stream, onSilence, silenceDelay = 2000, threshold = 1.0) 
     let lastSoundTime = Date.now();
 
     scriptProcessor.onaudioprocess = function () {
-        const array = new Uint8Array(analyser.frequencyBinCount);
-        analyser.getByteFrequencyData(array);
-        const volume = array.reduce((a, b) => a + b) / array.length;
+        const array = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(array);
+        let sum = 0;
+        for (let i = 0; i < array.length; i++) {
+            const value = (array[i] - 128) / 128;
+            sum += value * value;
+        }
+        const rms = Math.sqrt(sum / array.length);
+        const volume = rms * 100;
 
-        console.log("🎚️ Avg Volume:", volume.toFixed(2), volume < threshold ? "(silent)" : "(speaking)");
+        console.log("🎚️ RMS Volume:", volume.toFixed(2), volume < threshold ? "(silent)" : "(speaking)");
 
         if (volume > threshold) {
             lastSoundTime = Date.now();
