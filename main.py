@@ -56,7 +56,7 @@ def submit_audio():
         # Generate GPT response
         t_gpt = time.time()
         gpt_response = client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-3.5-turbo",
             messages=[
                 {"role": "system", "content": "أنت مساعد ذكي يتحدث اللغة العربية ويقدم ردوداً مختصرة بشكل مهني."},
                 {"role": "user", "content": text}
