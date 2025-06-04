@@ -70,13 +70,12 @@ function detectSilence(onSilence, threshold = 0.01, timeout = 1500) {
                 return;
             }
         } else {
-            silenceStart = performance.now(); // reset
+            silenceStart = performance.now();
         }
 
         silenceTimer = requestAnimationFrame(checkSilence);
     }
 
-    // ⏱️ Safety timeout: force stop after 7 seconds
     setTimeout(() => {
         if (isRecording) {
             console.log("⚠️ Force stop after 7s timeout.");
@@ -131,14 +130,34 @@ async function processAudio(audioBlob) {
                 const sourceBuffer = mediaSource.addSourceBuffer("audio/mpeg");
                 fetch(streamUrl).then(res => {
                     const reader = res.body.getReader();
-                    const pump = () => reader.read().then(({ done, value }) => {
-                        if (done) {
-                            mediaSource.endOfStream();
-                            return;
-                        }
-                        sourceBuffer.appendBuffer(value);
-                        pump();
+
+                    const queue = [];
+                    let isAppending = false;
+
+                    const pump = () => {
+                        reader.read().then(({ done, value }) => {
+                            if (done) {
+                                if (!isAppending) mediaSource.endOfStream();
+                                return;
+                            }
+                            queue.push(value);
+                            tryAppend();
+                            pump();
+                        });
+                    };
+
+                    const tryAppend = () => {
+                        if (isAppending || queue.length === 0 || sourceBuffer.updating) return;
+                        isAppending = true;
+                        const chunk = queue.shift();
+                        sourceBuffer.appendBuffer(chunk);
+                    };
+
+                    sourceBuffer.addEventListener("updateend", () => {
+                        isAppending = false;
+                        tryAppend();
                     });
+
                     pump();
                 });
             });
@@ -147,7 +166,7 @@ async function processAudio(audioBlob) {
             audioPlayer.onended = () => {
                 console.log("🔁 Repeating loop...");
                 statusText.textContent = "🎤 Listening...";
-                startAssistant(); // loop again
+                startAssistant();
             };
         } catch (err) {
             console.error("❌ Audio send error:", err);
@@ -155,6 +174,5 @@ async function processAudio(audioBlob) {
             statusText.textContent = "❌ Failed to contact server.";
         }
     };
-
     reader.readAsDataURL(audioBlob);
 }
