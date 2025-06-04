@@ -6,6 +6,8 @@ let analyser;
 let sourceNode;
 let silenceTimer;
 let recordingStartTime;
+let micStream;
+let preMicStarted = false;
 
 const startBtn = document.getElementById("startBtn");
 const statusText = document.getElementById("statusText");
@@ -20,14 +22,23 @@ startBtn.addEventListener("click", async () => {
     startAssistant();
 });
 
+async function prepareMic() {
+    if (!micStream) {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+}
+
 async function startAssistant() {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    if (!micStream) {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    }
+
     audioContext = new AudioContext();
-    sourceNode = audioContext.createMediaStreamSource(stream);
+    sourceNode = audioContext.createMediaStreamSource(micStream);
     analyser = audioContext.createAnalyser();
     sourceNode.connect(analyser);
 
-    mediaRecorder = new MediaRecorder(stream);
+    mediaRecorder = new MediaRecorder(micStream);
     audioChunks = [];
 
     mediaRecorder.addEventListener("dataavailable", event => {
@@ -163,43 +174,40 @@ async function processAudio(audioBlob) {
             });
 
             audioPlayer.play().then(() => {
-    console.log("▶️ Audio playing...");
-}).catch(err => {
-    console.warn("⚠️ Playback error:", err);
-});
+                console.log("▶️ Audio playing...");
+            }).catch(err => {
+                console.warn("⚠️ Playback error:", err);
+            });
 
-let lastCheck = 0;
-let done = false;
+            let done = false;
+            preMicStarted = false;
 
-audioPlayer.ontimeupdate = () => {
-    if (audioPlayer.duration > 0 &&
-        audioPlayer.currentTime > 0 &&
-        Math.abs(audioPlayer.duration - audioPlayer.currentTime) < 0.3 &&
-        !done) {
-        done = true;
-        console.log("🔁 Repeating loop via time check...");
-        statusText.textContent = "🎤 Listening...";
-        startAssistant();
-    }
-};
+            audioPlayer.ontimeupdate = () => {
+                if (!preMicStarted && audioPlayer.duration > 0 &&
+                    audioPlayer.currentTime > audioPlayer.duration - 1.0) {
+                    preMicStarted = true;
+                    prepareMic();
+                }
 
-// 🛡️ Extra fallback just in case
-setTimeout(() => {
-    if (!done) {
-        console.log("⏱️ Timeout fallback triggered.");
-        statusText.textContent = "🎤 Listening...";
-        startAssistant();
-    }
-}, 10000);
+                if (audioPlayer.duration > 0 &&
+                    audioPlayer.currentTime > 0 &&
+                    Math.abs(audioPlayer.duration - audioPlayer.currentTime) < 0.3 &&
+                    !done) {
+                    done = true;
+                    console.log("🔁 Repeating loop via time check...");
+                    statusText.textContent = "🎤 Listening...";
+                    startAssistant();
+                }
+            };
 
-// 🛡️ Fallback timeout in case 'ended' doesn't fire (e.g. on mobile)
-setTimeout(() => {
-    if (audioPlayer.paused) {
-        console.log("⏱️ Fallback restart triggered.");
-        statusText.textContent = "🎤 Listening...";
-        startAssistant();
-    }
-}, 8000);
+            setTimeout(() => {
+                if (!done) {
+                    console.log("⏱️ Timeout fallback triggered.");
+                    statusText.textContent = "🎤 Listening...";
+                    startAssistant();
+                }
+            }, 10000);
+
         } catch (err) {
             console.error("❌ Audio send error:", err);
             transcriptionText.textContent = "❌ Error sending audio.";
