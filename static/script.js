@@ -168,11 +168,29 @@ async function processAudio(audioBlob) {
     console.warn("⚠️ Playback error:", err);
 });
 
-audioPlayer.addEventListener("ended", () => {
-    console.log("🔁 Repeating loop...");
-    statusText.textContent = "🎤 Listening...";
-    startAssistant();
-});
+let lastCheck = 0;
+let done = false;
+
+audioPlayer.ontimeupdate = () => {
+    if (audioPlayer.duration > 0 &&
+        audioPlayer.currentTime > 0 &&
+        Math.abs(audioPlayer.duration - audioPlayer.currentTime) < 0.3 &&
+        !done) {
+        done = true;
+        console.log("🔁 Repeating loop via time check...");
+        statusText.textContent = "🎤 Listening...";
+        startAssistant();
+    }
+};
+
+// 🛡️ Extra fallback just in case
+setTimeout(() => {
+    if (!done) {
+        console.log("⏱️ Timeout fallback triggered.");
+        statusText.textContent = "🎤 Listening...";
+        startAssistant();
+    }
+}, 10000);
 
 // 🛡️ Fallback timeout in case 'ended' doesn't fire (e.g. on mobile)
 setTimeout(() => {
