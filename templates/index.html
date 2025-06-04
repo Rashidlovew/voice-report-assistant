@@ -3,16 +3,41 @@
 <head>
     <meta charset="UTF-8">
     <title>🎙️ Voice Report Assistant</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            background: linear-gradient(to right, #f0f8ff, #e6f7ff);
+            padding: 20px;
+        }
+        button {
+            font-size: 16px;
+            padding: 10px 20px;
+            margin: 10px;
+            border-radius: 10px;
+            border: none;
+            background-color: #007bff;
+            color: white;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        #micIcon {
+            font-size: 48px;
+            color: red;
+            display: none;
+        }
+    </style>
 </head>
 <body>
     <h2>🧠 Voice Report Assistant</h2>
-    
-    <button id="startBtn">🎙️ Start Assistant</button>
-
-    <p><strong>Status:</strong> <span id="statusText">⏳ Ready</span></p>
-    <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
-    <p><strong>Response:</strong> <span id="responseText"></span></p>
-
+    <button id="startBtn">▶️ Start Assistant</button>
+    <div>
+        <p><strong>🎤 Transcription:</strong> <span id="transcriptionText"></span></p>
+        <p><strong>🤖 Response:</strong> <span id="responseText"></span></p>
+    </div>
+    <div id="micIcon">🎙️</div>
     <audio id="audioPlayer" controls></audio>
 
     <script src="/static/script.js"></script>
