@@ -1,3 +1,4 @@
+// script.js (Front-end)
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
@@ -17,9 +18,7 @@ function showMicIcon(show) {
 }
 
 function startGreetingAndAssistant() {
-    console.log("🔊 Playing greeting...");
     playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
-        console.log("✅ Greeting finished. Starting assistant...");
         startAssistant();
     });
 }
@@ -38,10 +37,8 @@ async function playAudioStream(text) {
 async function startAssistant() {
     await startRecording();
 
-    // Force stop recording after 30 seconds (failsafe)
     setTimeout(() => {
         if (isRecording) {
-            console.warn("⚠️ Force stop after 30s timeout.");
             stopRecording();
         }
     }, 30000);
@@ -77,7 +74,7 @@ async function startRecording() {
 
             if (result.response) {
                 await playAudioStream(result.response);
-                startAssistant(); // Loop to keep the conversation going
+                startAssistant();
             }
         };
         reader.readAsDataURL(audioBlob);
@@ -86,10 +83,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-    console.log("🎙️ Recording started...");
-
-    // Silence detection with custom threshold and delay
-    detectSilence(stream, stopRecording, 4000, 5); // ⏱️ 4s silence, 🎚️ threshold 5
+    detectSilence(stream, stopRecording, 4000, 3);
 }
 
 function stopRecording() {
@@ -97,18 +91,9 @@ function stopRecording() {
     isRecording = false;
     mediaRecorder.stop();
     showMicIcon(false);
-    console.log("🛑 Recording stopped.");
 }
 
-/**
- * Detects silence using audio volume analysis.
- * 
- * @param {MediaStream} stream - the mic audio stream
- * @param {Function} onSilence - function to call after detecting silence
- * @param {number} silenceDelay - how long (ms) of silence to wait before stopping
- * @param {number} threshold - volume threshold to consider "speaking"
- */
-function detectSilence(stream, onSilence, silenceDelay = 4000, threshold = 5) {
+function detectSilence(stream, onSilence, silenceDelay = 4000, threshold = 3) {
     const audioContext = new AudioContext();
     const analyser = audioContext.createAnalyser();
     const microphone = audioContext.createMediaStreamSource(stream);
@@ -133,14 +118,11 @@ function detectSilence(stream, onSilence, silenceDelay = 4000, threshold = 5) {
         const rms = Math.sqrt(sum / array.length);
         const volume = rms * 100;
 
-        console.log("🎚️ RMS Volume:", volume.toFixed(2), volume < threshold ? "(silent)" : "(speaking)");
-
         if (volume > threshold) {
             lastSoundTime = Date.now();
         }
 
         if (Date.now() - lastSoundTime > silenceDelay && isRecording) {
-            console.log("🤫 Silence detected. Stopping...");
             onSilence();
             microphone.disconnect();
             scriptProcessor.disconnect();
