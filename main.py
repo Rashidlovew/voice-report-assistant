@@ -1,10 +1,10 @@
 import os
 import base64
 import tempfile
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, Response
 from flask_cors import CORS
 from openai import OpenAI
-from elevenlabs import generate, stream, set_api_key
+from elevenlabs.client import ElevenLabs
 from docx import Document
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -20,7 +20,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 VOICE_ID = os.getenv("VOICE_ID")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
-set_api_key(ELEVENLABS_API_KEY)
+eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
 app = Flask(__name__)
 CORS(app)
@@ -35,12 +35,12 @@ report_fields = [
 ]
 
 field_prompts = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+    "Date": "🎤 أرسل تاريخ الواقعة.",
+    "Briefing": "🎤 أرسل موجز الواقعة.",
+    "LocationObservations": "🎤 أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "Examination": "🎤 أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "Outcomes": "🎤 أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "TechincalOpinion": "🎤 أرسل الرأي الفني."
 }
 
 field_names_ar = {
@@ -97,7 +97,6 @@ def handle_audio():
 
     return jsonify({"transcript": transcript, "response": response})
 
-
 def generate_report(user_id):
     session = user_sessions[user_id]
     data = session["data"]
@@ -114,7 +113,6 @@ def generate_report(user_id):
     output_path = f"report_{user_id}.docx"
     doc.save(output_path)
     return output_path
-
 
 def send_email_with_attachment(file_path):
     msg = MIMEMultipart()
@@ -134,18 +132,25 @@ def send_email_with_attachment(file_path):
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.send_message(msg)
 
-
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
-    audio = generate(text=text, voice=VOICE_ID, model="eleven_monolingual_v1", stream=True)
-    return stream(audio)
+    audio_stream = eleven.generate(
+        text=text,
+        voice=VOICE_ID,
+        model="eleven_monolingual_v1",
+        stream=True
+    )
 
+    def generate_stream():
+        for chunk in audio_stream:
+            yield chunk
+
+    return Response(generate_stream(), content_type="audio/mpeg")
 
 @app.route("/")
 def index():
     return "✅ Voice Assistant is live."
-
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
