@@ -1,28 +1,32 @@
+// ✅ script.js - Updated with GPT-based intent handling and field buttons
+
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
+let currentField = "";
+let fieldQueue = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
+let fieldIndex = 0;
 
 const startBtn = document.getElementById("startBtn");
 const audioPlayer = document.getElementById("audioPlayer");
 const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 const micIcon = document.getElementById("micIcon");
-const fieldButtonsContainer = document.getElementById("fieldButtons");
+const fieldButtons = document.getElementById("fieldButtons");
 
 startBtn.addEventListener("click", () => {
-    startGreetingAndAssistant();
+    greetUser();
 });
+
+function greetUser() {
+    playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
+        fieldIndex = 0;
+        startAssistant();
+    });
+}
 
 function showMicIcon(show) {
     micIcon.style.display = show ? "inline-block" : "none";
-}
-
-function startGreetingAndAssistant() {
-    console.log("🔊 Playing greeting...");
-    playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
-        console.log("✅ Greeting finished. Starting assistant...");
-        startAssistant();
-    });
 }
 
 async function playAudioStream(text) {
@@ -37,27 +41,24 @@ async function playAudioStream(text) {
 }
 
 async function startAssistant() {
+    currentField = fieldQueue[fieldIndex];
+    const promptText = `🎙️ أرسل ${currentField} من فضلك.`;
+    await playAudioStream(promptText);
     await startRecording();
 
     setTimeout(() => {
-        if (isRecording) {
-            console.warn("⚠️ Force stop after 30s timeout.");
-            stopRecording();
-        }
-    }, 30000); // 30 seconds
+        if (isRecording) stopRecording();
+    }, 30000);
 }
 
 async function startRecording() {
     if (isRecording) return;
-
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
 
     mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-            audioChunks.push(event.data);
-        }
+        if (event.data.size > 0) audioChunks.push(event.data);
     };
 
     mediaRecorder.onstop = async () => {
@@ -75,9 +76,29 @@ async function startRecording() {
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
 
-            if (result.response) {
-                await playAudioStream(result.response);
+            // Analyze intent
+            const intentResponse = await fetch("/analyze-intent", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: result.transcript })
+            });
+            const intentResult = await intentResponse.json();
+
+            if (intentResult.intent === "approve") {
+                fieldIndex++;
+            } else if (intentResult.intent === "redo") {
+                // stay on same field
+            } else if (intentResult.intent === "restart") {
+                fieldIndex = 0;
+            } else if (intentResult.intent === "fieldCorrection") {
+                const target = fieldQueue.indexOf(intentResult.field);
+                if (target !== -1) fieldIndex = target;
+            }
+
+            if (fieldIndex < fieldQueue.length) {
                 startAssistant();
+            } else {
+                playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
             }
         };
         reader.readAsDataURL(audioBlob);
@@ -86,9 +107,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-    console.log("🎙️ Recording started...");
-
-    detectSilence(stream, stopRecording, 6000, 5); // 6 seconds silence
+    detectSilence(stream, stopRecording, 6000, 5);
 }
 
 function stopRecording() {
@@ -96,7 +115,6 @@ function stopRecording() {
     isRecording = false;
     mediaRecorder.stop();
     showMicIcon(false);
-    console.log("🛑 Recording stopped.");
 }
 
 function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
@@ -112,7 +130,6 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
     scriptProcessor.connect(audioContext.destination);
 
     let lastSoundTime = Date.now();
-
     scriptProcessor.onaudioprocess = function () {
         const array = new Uint8Array(analyser.fftSize);
         analyser.getByteTimeDomainData(array);
@@ -123,15 +140,8 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
         }
         const rms = Math.sqrt(sum / array.length);
         const volume = rms * 100;
-
-        console.log("🎚️ RMS Volume:", volume.toFixed(2), volume < threshold ? "(silent)" : "(speaking)");
-
-        if (volume > threshold) {
-            lastSoundTime = Date.now();
-        }
-
+        if (volume > threshold) lastSoundTime = Date.now();
         if (Date.now() - lastSoundTime > silenceDelay && isRecording) {
-            console.log("🤫 Silence detected. Stopping...");
             onSilence();
             microphone.disconnect();
             scriptProcessor.disconnect();
@@ -139,3 +149,21 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
         }
     };
 }
+
+// 🔘 Field buttons (optional backup control)
+function renderFieldButtons() {
+    fieldQueue.forEach(field => {
+        const btn = document.createElement("button");
+        btn.textContent = field;
+        btn.className = "field-btn";
+        btn.onclick = () => {
+            const target = fieldQueue.indexOf(field);
+            if (target !== -1) {
+                fieldIndex = target;
+                startAssistant();
+            }
+        };
+        fieldButtons.appendChild(btn);
+    });
+}
+renderFieldButtons();
