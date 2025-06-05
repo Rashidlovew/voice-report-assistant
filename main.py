@@ -135,11 +135,10 @@ def send_email_with_attachment(file_path):
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
-    audio_stream = eleven.generate(
-        text=text,
-        voice=VOICE_ID,
-        model="eleven_monolingual_v1",
-        stream=True
+    audio_stream = eleven.text_to_speech.stream(
+        input=text,
+        voice_id=VOICE_ID,
+        model_id="eleven_monolingual_v1"
     )
 
     def generate_stream():
