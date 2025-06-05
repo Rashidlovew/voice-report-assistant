@@ -54,6 +54,28 @@ field_names_ar = {
 
 user_sessions = {}
 
+
+def analyze_intent(transcript):
+    prompt = f"""
+    The following sentence is spoken in Arabic and comes from a user interacting with a voice assistant that fills out a report form.
+
+    Based on the sentence, classify the user's intent into one of the following:
+    - approve
+    - redo
+    - restart
+    - correct_field:FIELD_NAME (example: correct_field:Date)
+
+    Arabic sentence: "{transcript}"
+
+    Only return the intent label, like 'approve' or 'correct_field:Date'.
+    """
+    response = openai.ChatCompletion.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0
+    )
+    return response.choices[0].message.content.strip()
+
 @app.route("/submitAudio", methods=["POST"])
 def handle_audio():
     data = request.json
@@ -149,3 +171,6 @@ def index():
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
+        # Analyze intent using GPT
+        intent = analyze_intent(transcript)
+        print("🧠 Detected intent:", intent)
