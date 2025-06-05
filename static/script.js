@@ -1,4 +1,4 @@
-// ✅ script.js - Updated with GPT-based intent handling and field buttons
+// ✅ script.js - Updated with enhanced greeting and GPT-based intent handling
 
 let isRecording = false;
 let mediaRecorder;
@@ -19,7 +19,8 @@ startBtn.addEventListener("click", () => {
 });
 
 function greetUser() {
-    playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
+    const welcome = "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.";
+    playAudioStream(welcome).then(() => {
         fieldIndex = 0;
         startAssistant();
     });
@@ -76,7 +77,6 @@ async function startRecording() {
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
 
-            // Analyze intent
             const intentResponse = await fetch("/analyze-intent", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
