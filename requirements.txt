@@ -1,10 +1,5 @@
 Flask
-openai
-requests
-pydub
-docxtpl
-python-docx
 flask-cors
-ffmpeg-python
+openai
 elevenlabs
-
+python-docx
