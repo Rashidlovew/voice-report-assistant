@@ -21,6 +21,7 @@ VOICE_ID = os.getenv("VOICE_ID")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+VOICE_ID = "21m00Tcm4TlvDq8ikWAM"  # Rachel
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
