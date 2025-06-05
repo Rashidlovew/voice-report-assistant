@@ -1,7 +1,7 @@
 import os
 import base64
 import tempfile
-from flask import Flask, request, jsonify, send_file, Response
+from flask import Flask, request, jsonify, send_file, Response, render_template
 from flask_cors import CORS
 from openai import OpenAI
 from elevenlabs.client import ElevenLabs
@@ -22,7 +22,7 @@ VOICE_ID = os.getenv("VOICE_ID")
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
 
-app = Flask(__name__)
+app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
 report_fields = [
@@ -35,12 +35,12 @@ report_fields = [
 ]
 
 field_prompts = {
-    "Date": "🎤 أرسل تاريخ الواقعة.",
-    "Briefing": "🎤 أرسل موجز الواقعة.",
-    "LocationObservations": "🎤 أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎤 أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎤 أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎤 أرسل الرأي الفني."
+    "Date": "🎙️ أرسل تاريخ الواقعة.",
+    "Briefing": "🎙️ أرسل موجز الواقعة.",
+    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
 }
 
 field_names_ar = {
@@ -150,7 +150,7 @@ def stream_audio():
 
 @app.route("/")
 def index():
-    return "✅ Voice Assistant is live."
+    return render_template("index.html")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
