@@ -6,39 +6,44 @@
     <style>
         body {
             font-family: Arial, sans-serif;
-            text-align: center;
-            background: linear-gradient(to right, #f0f8ff, #e6f7ff);
             padding: 20px;
         }
-        button {
-            font-size: 16px;
-            padding: 10px 20px;
-            margin: 10px;
-            border-radius: 10px;
-            border: none;
-            background-color: #007bff;
-            color: white;
-            cursor: pointer;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
+
         #micIcon {
-            font-size: 48px;
-            color: red;
             display: none;
+            font-size: 30px;
+            color: red;
+            margin-left: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        #fieldButtons button {
+            margin: 5px;
         }
     </style>
 </head>
 <body>
     <h2>🧠 Voice Report Assistant</h2>
-    <button id="startBtn">▶️ Start Assistant</button>
-    <div>
-        <p><strong>🎤 Transcription:</strong> <span id="transcriptionText"></span></p>
-        <p><strong>🤖 Response:</strong> <span id="responseText"></span></p>
-    </div>
-    <div id="micIcon">🎙️</div>
+    <button id="startBtn">🎙️ Start Assistant</button>
+    <span id="micIcon">🎤</span>
+
+    <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
+    <p><strong>Response:</strong> <span id="responseText"></span></p>
     <audio id="audioPlayer" controls></audio>
+
+    <h3>📝 Edit Specific Field (Optional)</h3>
+    <div id="fieldButtons">
+        <button onclick="goToField('Date')">التاريخ</button>
+        <button onclick="goToField('Briefing')">موجز الواقعة</button>
+        <button onclick="goToField('LocationObservations')">معاينة الموقع</button>
+        <button onclick="goToField('Examination')">نتيجة الفحص الفني</button>
+        <button onclick="goToField('Outcomes')">النتيجة</button>
+        <button onclick="goToField('TechincalOpinion')">الرأي الفني</button>
+    </div>
 
     <script src="/static/script.js"></script>
 </body>
