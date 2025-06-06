@@ -20,7 +20,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "VwC51uc4PUblWEJSPzeo"  #  - Arabic female voice
+VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
@@ -134,11 +134,11 @@ def send_email_with_attachment(file_path):
 
 @app.route("/stream-audio")
 def stream_audio():
-    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
+    text = request.args.get("text", "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.")
     audio_stream = eleven.text_to_speech.stream(
         text=text,
         voice_id=VOICE_ID,
-        model_id="eleven_monolingual_v1"
+        model_id="eleven_multilingual_v2"  # ✅ Arabic-supporting model
     )
 
     def generate_stream():
