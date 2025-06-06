@@ -1,53 +1,25 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
-    <meta charset="UTF-8">
-    <title>مساعد التقارير الصوتية</title>
-    <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            text-align: center;
-            direction: rtl;
-            background-color: #f2f2f2;
-        }
-        button {
-            font-size: 1.2em;
-            padding: 10px 20px;
-            margin: 10px;
-            cursor: pointer;
-        }
-        #micIcon {
-            font-size: 2em;
-            color: red;
-            display: none;
-        }
-        .field-button {
-            display: inline-block;
-            margin: 5px;
-            padding: 8px 14px;
-            font-size: 1em;
-            background-color: #ddd;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-        }
-        .field-button:hover {
-            background-color: #bbb;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <title>Voice Report Assistant</title>
+  <style>
+    body { font-family: Arial, sans-serif; direction: rtl; text-align: right; margin: 30px; }
+    button { padding: 10px 20px; margin-top: 10px; }
+    #micIcon { display: none; margin-right: 10px; }
+  </style>
 </head>
 <body>
-    <h1>🎙️ مساعد التقارير الصوتية</h1>
-    <button id="startBtn">ابدأ المحادثة</button>
-    <div id="micIcon">🎤</div>
+  <h2>🎙️ Voice Report Assistant</h2>
 
-    <p><strong>📄 النص المدخل:</strong> <span id="transcriptionText"></span></p>
-    <p><strong>🤖 رد المساعد:</strong> <span id="responseText"></span></p>
+  <div id="status">⏳ Ready</div>
+  <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
+  <p><strong>Response:</strong> <span id="responseText"></span></p>
+  <audio id="audioPlayer" controls></audio><br>
 
-    <div id="fieldButtonsContainer" style="margin-top: 20px;"></div>
+  <button id="startBtn">Start Assistant</button>
+  <span id="micIcon">🎤</span>
 
-    <audio id="audioPlayer" autoplay></audio>
-
-    <script src="static/script.js"></script>
+  <script src="/static/script.js"></script>
 </body>
 </html>
