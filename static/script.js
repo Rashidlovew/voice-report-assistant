@@ -1,17 +1,10 @@
-const fieldNamesAr = {
-    Date: "التاريخ",
-    Briefing: "موجز الواقعة",
-    LocationObservations: "معاينة الموقع",
-    Examination: "نتيجة الفحص الفني",
-    Outcomes: "النتيجة",
-    TechincalOpinion: "الرأي الفني"
-};
+// ✅ script.js - Final version with status indicators and bug fixes
 
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
 let currentField = "";
-let fieldQueue = Object.keys(fieldNamesAr);
+let fieldQueue = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
 let fieldIndex = 0;
 
 const startBtn = document.getElementById("startBtn");
@@ -20,6 +13,9 @@ const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 const micIcon = document.getElementById("micIcon");
 const fieldButtons = document.getElementById("fieldButtons");
+const statusDiv = document.createElement("div");
+statusDiv.style.marginTop = "10px";
+document.body.insertBefore(statusDiv, fieldButtons);
 
 startBtn.addEventListener("click", () => {
     greetUser();
@@ -33,16 +29,22 @@ function greetUser() {
     });
 }
 
+function updateStatus(text) {
+    statusDiv.textContent = text;
+}
+
 function showMicIcon(show) {
     micIcon.style.display = show ? "inline-block" : "none";
 }
 
 async function playAudioStream(text) {
     return new Promise((resolve) => {
+        updateStatus("🔊 يتحدث...");
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.play();
         audioPlayer.addEventListener("ended", function handler() {
             audioPlayer.removeEventListener("ended", handler);
+            updateStatus("🎤 في انتظار الصوت...");
             resolve();
         });
     });
@@ -50,7 +52,8 @@ async function playAudioStream(text) {
 
 async function startAssistant() {
     currentField = fieldQueue[fieldIndex];
-    const promptText = `🎙️ أرسل ${fieldNamesAr[currentField]} من فضلك.`;
+    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`).textContent;
+    const promptText = `🎙️ أرسل ${arabicLabel} من فضلك.`;
     await playAudioStream(promptText);
     await startRecording();
 
@@ -71,6 +74,8 @@ async function startRecording() {
 
     mediaRecorder.onstop = async () => {
         showMicIcon(false);
+        updateStatus("🔁 معالجة...");
+
         const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
         const reader = new FileReader();
         reader.onloadend = async () => {
@@ -94,7 +99,7 @@ async function startRecording() {
             if (intentResult.intent === "approve") {
                 fieldIndex++;
             } else if (intentResult.intent === "redo") {
-                // Stay on same field
+                // stay on same field
             } else if (intentResult.intent === "restart") {
                 fieldIndex = 0;
             } else if (intentResult.intent === "fieldCorrection") {
@@ -105,6 +110,7 @@ async function startRecording() {
             if (fieldIndex < fieldQueue.length) {
                 startAssistant();
             } else {
+                updateStatus("✅ تم الانتهاء من جميع المدخلات.");
                 playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
             }
         };
@@ -114,6 +120,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
+    updateStatus("🎙️ تسجيل الصوت...");
     detectSilence(stream, stopRecording, 6000, 5);
 }
 
@@ -122,6 +129,7 @@ function stopRecording() {
     isRecording = false;
     mediaRecorder.stop();
     showMicIcon(false);
+    updateStatus("🛑 تم إيقاف التسجيل");
 }
 
 function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
@@ -158,10 +166,20 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
 }
 
 function renderFieldButtons() {
+    fieldButtons.innerHTML = ""; // Prevent duplicates
+    const arabicLabels = {
+        Date: "التاريخ",
+        Briefing: "موجز الواقعة",
+        LocationObservations: "معاينة الموقع",
+        Examination: "نتيجة الفحص الفني",
+        Outcomes: "النتيجة",
+        TechincalOpinion: "الرأي الفني"
+    };
     fieldQueue.forEach(field => {
         const btn = document.createElement("button");
-        btn.textContent = fieldNamesAr[field];
+        btn.textContent = arabicLabels[field];
         btn.className = "field-btn";
+        btn.setAttribute("data-field", field);
         btn.onclick = () => {
             const target = fieldQueue.indexOf(field);
             if (target !== -1) {
