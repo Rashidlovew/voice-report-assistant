@@ -7,4 +7,3 @@ python-docx
 flask-cors
 ffmpeg-python
 elevenlabs
-
