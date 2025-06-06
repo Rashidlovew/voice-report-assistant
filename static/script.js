@@ -7,7 +7,6 @@ const audioPlayer = document.getElementById("audioPlayer");
 const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 const micIcon = document.getElementById("micIcon");
-const fieldButtonsContainer = document.getElementById("fieldButtonsContainer");
 
 startBtn.addEventListener("click", () => {
     startGreetingAndAssistant();
@@ -18,9 +17,7 @@ function showMicIcon(show) {
 }
 
 function startGreetingAndAssistant() {
-    console.log("🔊 Playing greeting...");
     playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
-        console.log("✅ Greeting finished. Starting assistant...");
         startAssistant();
     });
 }
@@ -39,9 +36,9 @@ async function playAudioStream(text) {
 async function startAssistant() {
     await startRecording();
 
+    // Force timeout after 30s
     setTimeout(() => {
         if (isRecording) {
-            console.warn("⚠️ Force stop after 30s timeout.");
             stopRecording();
         }
     }, 30000);
@@ -75,10 +72,6 @@ async function startRecording() {
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
 
-            if (result.buttons && Array.isArray(result.buttons)) {
-                showFieldButtons(result.buttons);
-            }
-
             if (result.response) {
                 await playAudioStream(result.response);
                 startAssistant();
@@ -90,9 +83,8 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-    console.log("🎙️ Recording started...");
 
-    detectSilence(stream, stopRecording, 6000, 5);
+    detectSilence(stream, stopRecording, 6000, 5); // silenceDelay: 6s
 }
 
 function stopRecording() {
@@ -100,7 +92,6 @@ function stopRecording() {
     isRecording = false;
     mediaRecorder.stop();
     showMicIcon(false);
-    console.log("🛑 Recording stopped.");
 }
 
 function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
@@ -133,30 +124,10 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
         }
 
         if (Date.now() - lastSoundTime > silenceDelay && isRecording) {
-            console.log("🤫 Silence detected. Stopping...");
             onSilence();
             microphone.disconnect();
             scriptProcessor.disconnect();
             audioContext.close();
         }
     };
-}
-
-function showFieldButtons(fields) {
-    fieldButtonsContainer.innerHTML = '';
-    fields.forEach(field => {
-        const btn = document.createElement("button");
-        btn.className = "field-button";
-        btn.textContent = `🔁 أعد ${field}`;
-        btn.onclick = () => {
-            fetch("/repeat-field", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ field })
-            }).then(() => {
-                startAssistant();
-            });
-        };
-        fieldButtonsContainer.appendChild(btn);
-    });
 }
