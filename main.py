@@ -65,9 +65,10 @@ def handle_audio():
         temp_filename = f.name
 
     with open(temp_filename, "rb") as audio_file:
+        # FIX: pass full tuple for OpenAI to detect mime type correctly
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
-            file=audio_file,
+            file=("audio.webm", audio_file, "audio/webm"),
             response_format="text",
             language="ar"
         )
@@ -97,6 +98,7 @@ def handle_audio():
 
     return jsonify({"transcript": transcript, "response": response})
 
+
 def generate_report(user_id):
     session = user_sessions[user_id]
     data = session["data"]
@@ -113,6 +115,7 @@ def generate_report(user_id):
     output_path = f"report_{user_id}.docx"
     doc.save(output_path)
     return output_path
+
 
 def send_email_with_attachment(file_path):
     msg = MIMEMultipart()
@@ -132,13 +135,14 @@ def send_email_with_attachment(file_path):
         server.login(EMAIL_SENDER, EMAIL_PASSWORD)
         server.send_message(msg)
 
+
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
     audio_stream = eleven.text_to_speech.stream(
         text=text,
         voice_id=VOICE_ID,
-        model_id="eleven_multilingual_v2"
+        model_id="eleven_monolingual_v1"
     )
 
     def generate_stream():
@@ -147,34 +151,11 @@ def stream_audio():
 
     return Response(generate_stream(), content_type="audio/mpeg")
 
-@app.route("/analyze-intent", methods=["POST"])
-def analyze_intent():
-    data = request.json
-    user_input = data.get("message", "")
-    if not user_input:
-        return jsonify({"intent": "unknown"})
-
-    prompt = f"حلل نية المستخدم بناءً على هذه الجملة: '{user_input}'. هل هي واحدة من: (موافقة، إعادة، إعادة من البداية، تصحيح حقل معين؟ اذكر النية فقط."
-    chat = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "أنت مساعد ذكي لتحليل نية المستخدم من جملة قصيرة."},
-            {"role": "user", "content": prompt}
-        ]
-    )
-    result = chat.choices[0].message.content.strip()
-    intent_map = {
-        "موافقة": "approve",
-        "إعادة": "redo",
-        "إعادة من البداية": "restart",
-        "تصحيح": "fieldCorrection"
-    }
-    intent = intent_map.get(result, "approve")
-    return jsonify({"intent": intent})
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
