@@ -1,6 +1,7 @@
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
+let currentFieldIndex = 0;
 
 const startBtn = document.getElementById("startBtn");
 const audioPlayer = document.getElementById("audioPlayer");
@@ -9,112 +10,116 @@ const responseText = document.getElementById("responseText");
 const micIcon = document.getElementById("micIcon");
 const fieldButtons = document.getElementById("fieldButtons");
 
-let currentFieldIndex = 0;
-let fieldData = {};
-const fieldOrder = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
-const fieldPrompts = {
-    "Date": "🎙️ من فضلك، أخبريني بتاريخ الواقعة.",
-    "Briefing": "🎙️ من فضلك، قدّمي موجزاً للواقعة.",
-    "LocationObservations": "🎙️ من فضلك، ما الذي تبيّن من معاينة الموقع؟",
-    "Examination": "🎙️ ما هي نتائج الفحص الفني؟",
-    "Outcomes": "🎙️ ما هي النتيجة النهائية بعد المعاينة والفحص؟",
-    "TechincalOpinion": "🎙️ ما هو الرأي الفني؟"
-};
+const fields = [
+    "Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"
+];
 
 startBtn.addEventListener("click", () => {
-    startGreeting();
+    startConversation();
 });
 
 function showMicIcon(show) {
     micIcon.style.display = show ? "inline-block" : "none";
 }
 
-function startGreeting() {
-    playAudioStream("مرحباً، سأقوم بمساعدتك في إعداد التقرير خطوة بخطوة.").then(() => {
-        askNextField();
+function showFieldButtons() {
+    fieldButtons.innerHTML = '';
+    fields.forEach((field, index) => {
+        const btn = document.createElement("button");
+        btn.textContent = `تعديل ${getFieldLabel(field)}`;
+        btn.onclick = () => {
+            currentFieldIndex = index;
+            askField(field);
+        };
+        fieldButtons.appendChild(btn);
     });
 }
 
-function askNextField() {
-    if (currentFieldIndex < fieldOrder.length) {
-        const field = fieldOrder[currentFieldIndex];
-        playAudioStream(fieldPrompts[field]).then(() => {
-            startRecording();
-        });
-    } else {
-        playAudioStream("تم استلام جميع البيانات. يتم الآن إعداد التقرير وإرساله بالبريد الإلكتروني.");
-        fetch("/generateReport", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(fieldData)
-        });
-    }
+function getFieldLabel(field) {
+    const labels = {
+        Date: "التاريخ",
+        Briefing: "موجز الواقعة",
+        LocationObservations: "معاينة الموقع",
+        Examination: "نتيجة الفحص",
+        Outcomes: "النتيجة",
+        TechincalOpinion: "الرأي الفني"
+    };
+    return labels[field] || field;
+}
+
+async function startConversation() {
+    await playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟");
+    askField(fields[currentFieldIndex]);
+}
+
+async function askField(fieldKey) {
+    await playAudioStream(getPrompt(fieldKey));
+    await startRecording();
+}
+
+function getPrompt(field) {
+    const prompts = {
+        Date: "🎙️ من فضلك، ما هو تاريخ الواقعة؟",
+        Briefing: "🎙️ من فضلك، أرسل موجزاً رسمياً للواقعة.",
+        LocationObservations: "🎙️ من فضلك، صف ملاحظاتك أثناء معاينة الموقع.",
+        Examination: "🎙️ ما هي نتيجة الفحص الفني؟",
+        Outcomes: "🎙️ ما النتيجة بعد الفحص والمعاينة؟",
+        TechincalOpinion: "🎙️ ما هو رأيك الفني النهائي؟"
+    };
+    return prompts[field];
 }
 
 async function playAudioStream(text) {
     return new Promise((resolve) => {
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.play();
-        audioPlayer.addEventListener("ended", function handler() {
-            audioPlayer.removeEventListener("ended", handler);
-            resolve();
-        });
+        audioPlayer.onended = resolve;
     });
 }
 
 async function startRecording() {
     if (isRecording) return;
-
     const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
-
-    mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-            audioChunks.push(event.data);
-        }
+    mediaRecorder.ondataavailable = e => {
+        if (e.data.size > 0) audioChunks.push(e.data);
     };
-
     mediaRecorder.onstop = async () => {
         showMicIcon(false);
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const blob = new Blob(audioChunks, { type: "audio/webm" });
         const reader = new FileReader();
         reader.onloadend = async () => {
             const base64Audio = reader.result;
-            const response = await fetch("/submitAudio", {
+            const res = await fetch("/submitAudio", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ audio: base64Audio, field: fieldOrder[currentFieldIndex] })
+                body: JSON.stringify({ audio: base64Audio, field: fields[currentFieldIndex] })
             });
-            const result = await response.json();
-            transcriptionText.textContent = result.transcript || "";
-            responseText.textContent = result.response || "";
+            const data = await res.json();
+            transcriptionText.textContent = data.transcript || "";
+            responseText.textContent = data.response || "";
 
-            if (result.intent === "approve") {
-                fieldData[fieldOrder[currentFieldIndex]] = result.transcript;
+            await playAudioStream(data.response || "");
+
+            if (data.nextStep === "continue") {
                 currentFieldIndex++;
-                askNextField();
-            } else if (result.intent === "redo") {
-                playAudioStream("من فضلك، أعيدي الإجابة.").then(() => startRecording());
-            } else if (result.intent === "restart") {
-                currentFieldIndex = 0;
-                fieldData = {};
-                startGreeting();
-            } else if (result.intent === "fieldCorrection") {
-                const target = result.targetField;
-                if (fieldOrder.includes(target)) {
-                    currentFieldIndex = fieldOrder.indexOf(target);
-                    askNextField();
+                if (currentFieldIndex < fields.length) {
+                    askField(fields[currentFieldIndex]);
+                } else {
+                    await playAudioStream("🎉 تم استلام جميع المعلومات. سيتم إرسال التقرير بالبريد الإلكتروني.");
+                    showFieldButtons();
                 }
+            } else if (data.nextStep === "repeat") {
+                askField(fields[currentFieldIndex]);
             }
         };
-        reader.readAsDataURL(audioBlob);
+        reader.readAsDataURL(blob);
     };
 
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-
     detectSilence(stream, stopRecording, 6000, 5);
 }
 
@@ -126,39 +131,38 @@ function stopRecording() {
 }
 
 function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    const microphone = audioContext.createMediaStreamSource(stream);
-    const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
+    const context = new AudioContext();
+    const source = context.createMediaStreamSource(stream);
+    const analyser = context.createAnalyser();
+    const processor = context.createScriptProcessor(2048, 1, 1);
 
-    analyser.smoothingTimeConstant = 0.8;
     analyser.fftSize = 2048;
-    microphone.connect(analyser);
-    analyser.connect(scriptProcessor);
-    scriptProcessor.connect(audioContext.destination);
+    analyser.smoothingTimeConstant = 0.8;
 
-    let lastSoundTime = Date.now();
+    source.connect(analyser);
+    analyser.connect(processor);
+    processor.connect(context.destination);
 
-    scriptProcessor.onaudioprocess = function () {
-        const array = new Uint8Array(analyser.fftSize);
-        analyser.getByteTimeDomainData(array);
+    let lastSound = Date.now();
+
+    processor.onaudioprocess = () => {
+        const buffer = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(buffer);
         let sum = 0;
-        for (let i = 0; i < array.length; i++) {
-            const value = (array[i] - 128) / 128;
-            sum += value * value;
+        for (let i = 0; i < buffer.length; i++) {
+            const v = (buffer[i] - 128) / 128;
+            sum += v * v;
         }
-        const rms = Math.sqrt(sum / array.length);
+        const rms = Math.sqrt(sum / buffer.length);
         const volume = rms * 100;
 
-        if (volume > threshold) {
-            lastSoundTime = Date.now();
-        }
+        if (volume > threshold) lastSound = Date.now();
 
-        if (Date.now() - lastSoundTime > silenceDelay && isRecording) {
+        if (Date.now() - lastSound > silenceDelay && isRecording) {
             onSilence();
-            microphone.disconnect();
-            scriptProcessor.disconnect();
-            audioContext.close();
+            source.disconnect();
+            processor.disconnect();
+            context.close();
         }
     };
 }
