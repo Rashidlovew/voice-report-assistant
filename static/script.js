@@ -7,19 +7,48 @@ const audioPlayer = document.getElementById("audioPlayer");
 const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 const micIcon = document.getElementById("micIcon");
+const fieldButtons = document.getElementById("fieldButtons");
+
+let currentFieldIndex = 0;
+let fieldData = {};
+const fieldOrder = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
+const fieldPrompts = {
+    "Date": "🎙️ من فضلك، أخبريني بتاريخ الواقعة.",
+    "Briefing": "🎙️ من فضلك، قدّمي موجزاً للواقعة.",
+    "LocationObservations": "🎙️ من فضلك، ما الذي تبيّن من معاينة الموقع؟",
+    "Examination": "🎙️ ما هي نتائج الفحص الفني؟",
+    "Outcomes": "🎙️ ما هي النتيجة النهائية بعد المعاينة والفحص؟",
+    "TechincalOpinion": "🎙️ ما هو الرأي الفني؟"
+};
 
 startBtn.addEventListener("click", () => {
-    startGreetingAndAssistant();
+    startGreeting();
 });
 
 function showMicIcon(show) {
     micIcon.style.display = show ? "inline-block" : "none";
 }
 
-function startGreetingAndAssistant() {
-    playAudioStream("مرحباً! كيف يمكنني مساعدتك اليوم؟").then(() => {
-        startAssistant();
+function startGreeting() {
+    playAudioStream("مرحباً، سأقوم بمساعدتك في إعداد التقرير خطوة بخطوة.").then(() => {
+        askNextField();
     });
+}
+
+function askNextField() {
+    if (currentFieldIndex < fieldOrder.length) {
+        const field = fieldOrder[currentFieldIndex];
+        playAudioStream(fieldPrompts[field]).then(() => {
+            startRecording();
+        });
+    } else {
+        playAudioStream("تم استلام جميع البيانات. يتم الآن إعداد التقرير وإرساله بالبريد الإلكتروني.");
+        fetch("/generateReport", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(fieldData)
+        });
+    }
 }
 
 async function playAudioStream(text) {
@@ -31,17 +60,6 @@ async function playAudioStream(text) {
             resolve();
         });
     });
-}
-
-async function startAssistant() {
-    await startRecording();
-
-    // Force timeout after 30s
-    setTimeout(() => {
-        if (isRecording) {
-            stopRecording();
-        }
-    }, 30000);
 }
 
 async function startRecording() {
@@ -66,15 +84,28 @@ async function startRecording() {
             const response = await fetch("/submitAudio", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ audio: base64Audio })
+                body: JSON.stringify({ audio: base64Audio, field: fieldOrder[currentFieldIndex] })
             });
             const result = await response.json();
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
 
-            if (result.response) {
-                await playAudioStream(result.response);
-                startAssistant();
+            if (result.intent === "approve") {
+                fieldData[fieldOrder[currentFieldIndex]] = result.transcript;
+                currentFieldIndex++;
+                askNextField();
+            } else if (result.intent === "redo") {
+                playAudioStream("من فضلك، أعيدي الإجابة.").then(() => startRecording());
+            } else if (result.intent === "restart") {
+                currentFieldIndex = 0;
+                fieldData = {};
+                startGreeting();
+            } else if (result.intent === "fieldCorrection") {
+                const target = result.targetField;
+                if (fieldOrder.includes(target)) {
+                    currentFieldIndex = fieldOrder.indexOf(target);
+                    askNextField();
+                }
             }
         };
         reader.readAsDataURL(audioBlob);
@@ -84,7 +115,7 @@ async function startRecording() {
     isRecording = true;
     showMicIcon(true);
 
-    detectSilence(stream, stopRecording, 6000, 5); // silenceDelay: 6s
+    detectSilence(stream, stopRecording, 6000, 5);
 }
 
 function stopRecording() {
