@@ -14,13 +14,13 @@ from email.mime.text import MIMEText
 # === Load environment variables ===
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")  # default if not overridden
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
+VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic voice
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
@@ -134,11 +134,11 @@ def send_email_with_attachment(file_path):
 
 @app.route("/stream-audio")
 def stream_audio():
-    text = request.args.get("text", "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.")
+    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
     audio_stream = eleven.text_to_speech.stream(
         text=text,
         voice_id=VOICE_ID,
-        model_id="eleven_multilingual_v2"  # ✅ Arabic-supporting model
+        model_id="eleven_multilingual_v2"
     )
 
     def generate_stream():
@@ -146,6 +146,32 @@ def stream_audio():
             yield chunk
 
     return Response(generate_stream(), content_type="audio/mpeg")
+
+@app.route("/analyze-intent", methods=["POST"])
+def analyze_intent():
+    message = request.json.get("message", "")
+    system_prompt = "أنت مساعد ذكي يفهم نية المستخدم من كلامه الصوتي باللغة العربية. قرر هل المستخدم يوافق (approve)، أو يريد الإعادة (redo)، أو يريد إعادة البدء (restart)، أو يحدد حقل معين لتعديله."
+
+    completion = client.chat.completions.create(
+        model="gpt-4",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": message}
+        ]
+    )
+
+    reply = completion.choices[0].message.content.strip().lower()
+
+    if "إعادة البدء" in reply:
+        return jsonify({"intent": "restart"})
+    elif "إعادة" in reply:
+        return jsonify({"intent": "redo"})
+    elif "تعديل" in reply:
+        for key, ar in field_names_ar.items():
+            if ar in reply:
+                return jsonify({"intent": "fieldCorrection", "field": key})
+    else:
+        return jsonify({"intent": "approve"})
 
 @app.route("/")
 def index():
