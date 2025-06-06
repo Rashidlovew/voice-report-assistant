@@ -20,7 +20,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic voice
+VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
@@ -149,29 +149,28 @@ def stream_audio():
 
 @app.route("/analyze-intent", methods=["POST"])
 def analyze_intent():
-    message = request.json.get("message", "")
-    system_prompt = "أنت مساعد ذكي يفهم نية المستخدم من كلامه الصوتي باللغة العربية. قرر هل المستخدم يوافق (approve)، أو يريد الإعادة (redo)، أو يريد إعادة البدء (restart)، أو يحدد حقل معين لتعديله."
+    data = request.json
+    user_input = data.get("message", "")
+    if not user_input:
+        return jsonify({"intent": "unknown"})
 
-    completion = client.chat.completions.create(
+    prompt = f"حلل نية المستخدم بناءً على هذه الجملة: '{user_input}'. هل هي واحدة من: (موافقة، إعادة، إعادة من البداية، تصحيح حقل معين؟ اذكر النية فقط."
+    chat = client.chat.completions.create(
         model="gpt-4",
         messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": message}
+            {"role": "system", "content": "أنت مساعد ذكي لتحليل نية المستخدم من جملة قصيرة."},
+            {"role": "user", "content": prompt}
         ]
     )
-
-    reply = completion.choices[0].message.content.strip().lower()
-
-    if "إعادة البدء" in reply:
-        return jsonify({"intent": "restart"})
-    elif "إعادة" in reply:
-        return jsonify({"intent": "redo"})
-    elif "تعديل" in reply:
-        for key, ar in field_names_ar.items():
-            if ar in reply:
-                return jsonify({"intent": "fieldCorrection", "field": key})
-    else:
-        return jsonify({"intent": "approve"})
+    result = chat.choices[0].message.content.strip()
+    intent_map = {
+        "موافقة": "approve",
+        "إعادة": "redo",
+        "إعادة من البداية": "restart",
+        "تصحيح": "fieldCorrection"
+    }
+    intent = intent_map.get(result, "approve")
+    return jsonify({"intent": intent})
 
 @app.route("/")
 def index():
