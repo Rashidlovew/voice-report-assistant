@@ -1,48 +1,34 @@
 import os
+import io
 import base64
-import tempfile
-from flask import Flask, request, jsonify, send_file, Response, render_template
-from flask_cors import CORS
-from openai import OpenAI
-from elevenlabs.client import ElevenLabs
-from docx import Document
 import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.mime.text import MIMEText
+import tempfile
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+from email.message import EmailMessage
+from docx import Document
+from docx.shared import Pt
+from openai import OpenAI
+from datetime import datetime
 
-# === Load environment variables ===
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
-
-client = OpenAI(api_key=OPENAI_API_KEY)
-eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
-
-app = Flask(__name__, static_folder="static", template_folder="templates")
+app = Flask(__name__)
 CORS(app)
 
-report_fields = [
-    "Date",
-    "Briefing",
-    "LocationObservations",
-    "Examination",
-    "Outcomes",
-    "TechincalOpinion"
-]
+openai_client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+DEPARTMENT_EMAIL = "frnreports@gmail.com"
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+
+# Arabic field definitions
 field_prompts = {
     "Date": "🎙️ أرسل تاريخ الواقعة.",
     "Briefing": "🎙️ أرسل موجز الواقعة.",
     "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
     "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و إجراء الفحوص الفنية اللازمة تبين ما يلي:.",
     "TechincalOpinion": "🎙️ أرسل الرأي الفني."
 }
-
 field_names_ar = {
     "Date": "التاريخ",
     "Briefing": "موجز الواقعة",
@@ -51,111 +37,140 @@ field_names_ar = {
     "Outcomes": "النتيجة",
     "TechincalOpinion": "الرأي الفني"
 }
+field_order = list(field_prompts.keys())
 
-user_sessions = {}
-
-@app.route("/submitAudio", methods=["POST"])
-def handle_audio():
-    data = request.json
-    base64_audio = data["audio"].split(",")[-1]
-    audio_data = base64.b64decode(base64_audio)
-
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-        f.write(audio_data)
-        temp_filename = f.name
-
-    with open(temp_filename, "rb") as audio_file:
-        # FIX: pass full tuple for OpenAI to detect mime type correctly
-        transcript = client.audio.transcriptions.create(
-            model="whisper-1",
-            file=("audio.webm", audio_file, "audio/webm"),
-            response_format="text",
-            language="ar"
-        )
-
-    user_id = "default"
-    session = user_sessions.setdefault(user_id, {"step": 0, "data": {}})
-    step = session["step"]
-
-    if step >= len(report_fields):
-        return jsonify({"response": "تم الانتهاء من جميع المدخلات.", "transcript": transcript})
-
-    field = report_fields[step]
-    session["data"][field] = transcript
-    session["step"] += 1
-
-    if session["step"] < len(report_fields):
-        next_prompt = field_prompts[report_fields[session["step"]]]
-    else:
-        next_prompt = "📄 يتم الآن تجهيز التقرير النهائي..."
-
-    if session["step"] == len(report_fields):
-        file_path = generate_report(user_id)
-        send_email_with_attachment(file_path)
-        response = "✅ تم إرسال التقرير عبر البريد الإلكتروني. شكراً لك!"
-    else:
-        response = next_prompt
-
-    return jsonify({"transcript": transcript, "response": response})
-
-
-def generate_report(user_id):
-    session = user_sessions[user_id]
-    data = session["data"]
-
-    doc = Document("police_report_template.docx")
-    for p in doc.paragraphs:
-        for key in report_fields:
-            if f"{{{{{key}}}}}" in p.text:
-                inline = p.runs
-                for i in range(len(inline)):
-                    if f"{{{{{key}}}}}" in inline[i].text:
-                        inline[i].text = inline[i].text.replace(f"{{{{{key}}}}}", data.get(key, ""))
-
-    output_path = f"report_{user_id}.docx"
-    doc.save(output_path)
-    return output_path
-
-
-def send_email_with_attachment(file_path):
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECEIVER
-    msg["Subject"] = "📄 Police Report Submission"
-
-    body = MIMEText("Attached is the completed police report.", "plain")
-    msg.attach(body)
-
-    with open(file_path, "rb") as f:
-        part = MIMEApplication(f.read(), Name=os.path.basename(file_path))
-        part["Content-Disposition"] = f'attachment; filename="{os.path.basename(file_path)}"'
-        msg.attach(part)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.send_message(msg)
-
-
-@app.route("/stream-audio")
-def stream_audio():
-    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
-    audio_stream = eleven.text_to_speech.stream(
-        text=text,
-        voice_id=VOICE_ID,
-        model_id="eleven_monolingual_v1"
-    )
-
-    def generate_stream():
-        for chunk in audio_stream:
-            yield chunk
-
-    return Response(generate_stream(), content_type="audio/mpeg")
-
+sessions = {}
 
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return "Voice Report Assistant is running."
 
+@app.route("/clientIP")
+def client_ip():
+    return jsonify({"ip": request.remote_addr})
+
+@app.route("/stream-audio")
+def stream_audio():
+    text = request.args.get("text", "")
+    if not text:
+        return "Missing text", 400
+    speech_response = openai_client.audio.speech.create(
+        model="tts-1",
+        voice="shimmer",  # Arabic-compatible OpenAI voice
+        input=text
+    )
+    audio_data = io.BytesIO(speech_response.read())
+    return send_file(audio_data, mimetype="audio/mpeg")
+
+@app.route("/submitAudio", methods=["POST"])
+def submit_audio():
+    data = request.get_json()
+    audio_base64 = data.get("audio", "").split(",")[1]
+    audio_bytes = base64.b64decode(audio_base64)
+
+    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp_file:
+        temp_file.write(audio_bytes)
+        temp_filename = temp_file.name
+
+    transcript = transcribe_audio(temp_filename)
+    os.remove(temp_filename)
+
+    user_id = "default_user"
+    session = sessions.setdefault(user_id, {"step": 0, "data": {}})
+    step = session["step"]
+
+    current_field = field_order[step] if step < len(field_order) else None
+    session["last_transcript"] = transcript
+
+    # Analyze intent with GPT
+    intent = analyze_intent(transcript)
+
+    if intent == "redo":
+        reply = f"↩️ يرجى إعادة إرسال {field_names_ar[current_field]}"
+    elif intent == "restart":
+        session["step"] = 0
+        session["data"] = {}
+        reply = "🔄 تم البدء من جديد، " + field_prompts[field_order[0]]
+    elif intent == "approve":
+        session["data"][current_field] = transcript
+        session["step"] += 1
+        if session["step"] < len(field_order):
+            next_field = field_order[session["step"]]
+            reply = f"✅ تم تسجيل {field_names_ar[current_field]}.\n{field_prompts[next_field]}"
+        else:
+            filename = generate_report(session["data"])
+            send_email_with_attachment(filename, DEPARTMENT_EMAIL)
+            reply = "📄 تم إعداد التقرير بنجاح وإرساله بالبريد الإلكتروني. شكراً لك!"
+    elif intent.startswith("field:"):
+        field_key = intent.split(":")[1]
+        session["step"] = field_order.index(field_key)
+        reply = f"↩️ يرجى إعادة إرسال {field_names_ar[field_key]}"
+    else:
+        reply = f"هل تقصد \"{transcript}\" كـ {field_names_ar[current_field]}؟"
+
+    return jsonify({
+        "transcript": transcript,
+        "response": reply
+    })
+
+def transcribe_audio(file_path):
+    with open(file_path, "rb") as audio_file:
+        transcript = openai_client.audio.transcriptions.create(
+            model="whisper-1",
+            file=audio_file,
+            response_format="text"
+        )
+        return transcript.strip()
+
+def analyze_intent(transcript):
+    prompt = f"""
+    Analyze the following user message in Arabic and return the user's intent as one of:
+    - approve
+    - redo
+    - restart
+    - field:<field_key>
+
+    User said: "{transcript}"
+    Return ONLY one of the above, no explanation.
+    """
+    response = openai_client.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "system", "content": prompt}]
+    )
+    return response.choices[0].message.content.strip()
+
+def generate_report(data):
+    template = Document("police_report_template.docx")
+    for para in template.paragraphs:
+        for key in field_order:
+            placeholder = f"<<{key}>>"
+            if placeholder in para.text:
+                para.text = para.text.replace(placeholder, data.get(key, ""))
+                for run in para.runs:
+                    run.font.name = "Dubai"
+                    run.font.size = Pt(13)
+                para.paragraph_format.right_to_left = True
+                para.alignment = 2
+    filename = f"report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
+    template.save(filename)
+    return filename
+
+def send_email_with_attachment(file_path, recipient):
+    msg = EmailMessage()
+    msg["Subject"] = "📄 التقرير الفني جاهز"
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = recipient
+    msg.set_content("تم إرفاق التقرير الفني في هذا البريد. شكراً لتعاونك.")
+
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+        msg.add_attachment(file_data, maintype="application",
+                           subtype="vnd.openxmlformats-officedocument.wordprocessingml.document",
+                           filename=os.path.basename(file_path))
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        smtp.send_message(msg)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
