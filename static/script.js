@@ -1,10 +1,17 @@
-// ✅ script.js - Updated with enhanced greeting and GPT-based intent handling
+const fieldNamesAr = {
+    Date: "التاريخ",
+    Briefing: "موجز الواقعة",
+    LocationObservations: "معاينة الموقع",
+    Examination: "نتيجة الفحص الفني",
+    Outcomes: "النتيجة",
+    TechincalOpinion: "الرأي الفني"
+};
 
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
 let currentField = "";
-let fieldQueue = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
+let fieldQueue = Object.keys(fieldNamesAr);
 let fieldIndex = 0;
 
 const startBtn = document.getElementById("startBtn");
@@ -43,7 +50,7 @@ async function playAudioStream(text) {
 
 async function startAssistant() {
     currentField = fieldQueue[fieldIndex];
-    const promptText = `🎙️ أرسل ${currentField} من فضلك.`;
+    const promptText = `🎙️ أرسل ${fieldNamesAr[currentField]} من فضلك.`;
     await playAudioStream(promptText);
     await startRecording();
 
@@ -87,7 +94,7 @@ async function startRecording() {
             if (intentResult.intent === "approve") {
                 fieldIndex++;
             } else if (intentResult.intent === "redo") {
-                // stay on same field
+                // Stay on same field
             } else if (intentResult.intent === "restart") {
                 fieldIndex = 0;
             } else if (intentResult.intent === "fieldCorrection") {
@@ -150,11 +157,10 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
     };
 }
 
-// 🔘 Field buttons (optional backup control)
 function renderFieldButtons() {
     fieldQueue.forEach(field => {
         const btn = document.createElement("button");
-        btn.textContent = field;
+        btn.textContent = fieldNamesAr[field];
         btn.className = "field-btn";
         btn.onclick = () => {
             const target = fieldQueue.indexOf(field);
