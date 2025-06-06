@@ -20,7 +20,7 @@ ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
 client = OpenAI(api_key=OPENAI_API_KEY)
 eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "N2lVS1w4EtoT3dr4eOWO"  # Hala - Arabic female voice
+VOICE_ID = "VwC51uc4PUblWEJSPzeo"  #  - Arabic female voice
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
