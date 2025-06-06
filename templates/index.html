@@ -1,50 +1,53 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>🎙️ Voice Report Assistant</title>
+    <title>مساعد التقارير الصوتية</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
-            padding: 20px;
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            direction: rtl;
+            background-color: #f2f2f2;
         }
-
-        #micIcon {
-            display: none;
-            font-size: 30px;
-            color: red;
-            margin-left: 10px;
-        }
-
         button {
+            font-size: 1.2em;
             padding: 10px 20px;
-            font-size: 16px;
+            margin: 10px;
+            cursor: pointer;
         }
-
-        #fieldButtons button {
+        #micIcon {
+            font-size: 2em;
+            color: red;
+            display: none;
+        }
+        .field-button {
+            display: inline-block;
             margin: 5px;
+            padding: 8px 14px;
+            font-size: 1em;
+            background-color: #ddd;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .field-button:hover {
+            background-color: #bbb;
         }
     </style>
 </head>
 <body>
-    <h2>🧠 Voice Report Assistant</h2>
-    <button id="startBtn">🎙️ Start Assistant</button>
-    <span id="micIcon">🎤</span>
+    <h1>🎙️ مساعد التقارير الصوتية</h1>
+    <button id="startBtn">ابدأ المحادثة</button>
+    <div id="micIcon">🎤</div>
 
-    <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
-    <p><strong>Response:</strong> <span id="responseText"></span></p>
-    <audio id="audioPlayer" controls></audio>
+    <p><strong>📄 النص المدخل:</strong> <span id="transcriptionText"></span></p>
+    <p><strong>🤖 رد المساعد:</strong> <span id="responseText"></span></p>
 
-    <h3>📝 Edit Specific Field (Optional)</h3>
-    <div id="fieldButtons">
-        <button onclick="goToField('Date')">التاريخ</button>
-        <button onclick="goToField('Briefing')">موجز الواقعة</button>
-        <button onclick="goToField('LocationObservations')">معاينة الموقع</button>
-        <button onclick="goToField('Examination')">نتيجة الفحص الفني</button>
-        <button onclick="goToField('Outcomes')">النتيجة</button>
-        <button onclick="goToField('TechincalOpinion')">الرأي الفني</button>
-    </div>
+    <div id="fieldButtonsContainer" style="margin-top: 20px;"></div>
 
-    <script src="/static/script.js"></script>
+    <audio id="audioPlayer" autoplay></audio>
+
+    <script src="static/script.js"></script>
 </body>
 </html>
