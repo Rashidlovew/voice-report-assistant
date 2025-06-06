@@ -1,25 +1,23 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8">
-  <title>Voice Report Assistant</title>
-  <style>
-    body { font-family: Arial, sans-serif; direction: rtl; text-align: right; margin: 30px; }
-    button { padding: 10px 20px; margin-top: 10px; }
-    #micIcon { display: none; margin-right: 10px; }
-  </style>
+    <meta charset="UTF-8">
+    <title>Voice Report Assistant</title>
+    <style>
+        body { font-family: 'Dubai', sans-serif; direction: rtl; text-align: right; margin: 30px; }
+        button { margin: 10px; padding: 10px 20px; font-size: 16px; }
+        #micIcon { font-size: 24px; color: red; display: none; }
+    </style>
 </head>
 <body>
-  <h2>🎙️ Voice Report Assistant</h2>
+    <h1>📝 مساعد إعداد التقارير الصوتي</h1>
+    <button id="startBtn">▶️ ابدأ</button>
+    <span id="micIcon">🎤</span>
+    <p id="transcriptionText"></p>
+    <p id="responseText"></p>
+    <audio id="audioPlayer" controls style="display:none;"></audio>
+    <div id="fieldButtons"></div>
 
-  <div id="status">⏳ Ready</div>
-  <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
-  <p><strong>Response:</strong> <span id="responseText"></span></p>
-  <audio id="audioPlayer" controls></audio><br>
-
-  <button id="startBtn">Start Assistant</button>
-  <span id="micIcon">🎤</span>
-
-  <script src="/static/script.js"></script>
+    <script src="static/script.js"></script>
 </body>
 </html>
