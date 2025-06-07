@@ -1,4 +1,3 @@
-
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
@@ -11,9 +10,23 @@ const fieldButtons = document.getElementById("fieldButtons");
 const fields = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
 let currentFieldIndex = 0;
 
-function startAssistant() {
-    statusText.innerText = "🎙️ جاري الاستماع...";
+async function startAssistant() {
+    const greeting = `👋 مرحباً بك، لنبدأ إعداد التقرير. ${getPrompt(currentFieldIndex)}`;
+    statusText.innerText = "🔊 يتم التشغيل...";
+    await playAudioStream(greeting);
     startRecording();
+}
+
+function getPrompt(index) {
+    const prompts = {
+        "Date": "🎙️ أرسل تاريخ الواقعة.",
+        "Briefing": "🎙️ أرسل موجز الواقعة.",
+        "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+        "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+        "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+        "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+    };
+    return prompts[fields[index]] || "";
 }
 
 async function playAudioStream(text) {
@@ -40,16 +53,20 @@ async function startRecording() {
             const response = await fetch("/submitAudio", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ audio: base64Audio, currentField: fields[currentFieldIndex] })
+                body: JSON.stringify({ audio: base64Audio })
             });
             const result = await response.json();
             transcriptionText.innerText = result.transcript;
             responseText.innerText = result.response;
             await playAudioStream(result.response);
-            if (result.action === "repeat") {
+
+            if (result.action === "redo" || result.action === "repeat") {
                 startAssistant();
-            } else if (result.action === "redo") {
+            } else if (result.action === "restart") {
+                currentFieldIndex = 0;
                 startAssistant();
+            } else if (result.action === "done") {
+                statusText.innerText = "✅ تم الانتهاء من التقرير";
             } else {
                 currentFieldIndex++;
                 if (currentFieldIndex < fields.length) {
