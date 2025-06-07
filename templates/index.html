@@ -1,27 +1,36 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="ar">
 <head>
   <meta charset="UTF-8" />
-  <title>مساعد التقارير الصوتي</title>
+  <title>مساعد إنشاء التقارير</title>
+  <script defer src="static/script.js"></script>
   <style>
-    body { font-family: 'Segoe UI', sans-serif; text-align: center; padding: 20px; direction: rtl; background-color: #f5f5f5; }
-    button { padding: 10px 20px; font-size: 16px; margin-top: 20px; cursor: pointer; }
-    .box { margin-top: 20px; background-color: #fff; border-radius: 10px; padding: 15px; box-shadow: 0 0 5px rgba(0,0,0,0.1); }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      direction: rtl;
+      text-align: right;
+      padding: 20px;
+    }
+    button {
+      margin-top: 15px;
+      padding: 10px 20px;
+      font-size: 16px;
+    }
+    #prompt {
+      margin-top: 30px;
+      font-size: 20px;
+      font-weight: bold;
+    }
+    #rephrased {
+      margin-top: 20px;
+      color: green;
+    }
   </style>
 </head>
 <body>
-  <h2>🎙️ مساعد إعداد التقارير - قسم الهندسة الجنائية</h2>
-  <div class="box" id="status">👂 في انتظار التعليمات...</div>
-  <div class="box">
-    <strong>📄 النص:</strong>
-    <div id="transcriptionText">---</div>
-  </div>
-  <div class="box">
-    <strong>🤖 رد المساعد:</strong>
-    <div id="responseText">---</div>
-  </div>
-  <button onclick="startAssistant()">▶️ ابدأ المساعد</button>
-  <audio id="audioPlayer" style="display:none;" controls></audio>
-  <script src="static/script.js"></script>
+  <h1>🎙️ مساعد إنشاء التقارير الهندسية</h1>
+  <p id="prompt">جاري التحميل...</p>
+  <button id="startBtn">🎤 اضغط للتحدث</button>
+  <p id="rephrased"></p>
 </body>
 </html>
