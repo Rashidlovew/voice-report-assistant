@@ -144,3 +144,6 @@ def generate_audio():
     with open(path, "rb") as f:
         audio_data = f.read()
     return audio_data, 200, {'Content-Type': 'audio/mpeg'}
+
+port = int(os.environ.get("PORT", 10000))
+app.run(host="0.0.0.0", port=port)
