@@ -4,7 +4,7 @@ import tempfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from openai import OpenAI
-from elevenlabs import generate, play, save, set_api_key
+from elevenlabs import Voice, VoiceSettings, set_api_key, generate
 
 app = Flask(__name__)
 CORS(app)
@@ -30,13 +30,21 @@ field_prompts = {
 }
 field_order = list(field_prompts.keys())
 
-# Stream TTS reply using ElevenLabs
+# Stream TTS reply using ElevenLabs (Rachel)
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "")
-    audio = generate(text=text, voice="Rachel", model="eleven_multilingual_v2")
+    audio = generate(
+        text=text,
+        voice=Voice(
+            voice_id="21m00Tcm4TlvDq8ikWAM",  # Rachel
+            settings=VoiceSettings(stability=0.4, similarity_boost=0.85)
+        ),
+        model="eleven_multilingual_v2"
+    )
     temp_path = tempfile.mktemp(suffix=".mp3")
-    save(audio, temp_path)
+    with open(temp_path, "wb") as f:
+        f.write(audio)
     return send_file(temp_path, mimetype="audio/mpeg")
 
 # Transcribe and respond
