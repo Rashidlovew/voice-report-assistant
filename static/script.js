@@ -5,26 +5,26 @@ document.addEventListener("DOMContentLoaded", () => {
 
 async function startConversation() {
   appendMessage("assistant", "🔊 جاري بدء المحادثة...");
-  await speakAndListen("/next");
+  await speakNext();
 }
 
-async function speakAndListen(endpoint) {
-  try {
-    const response = await fetch(endpoint);
-    const data = await response.json();
-    appendMessage("assistant", data.text);
+async function speakNext() {
+  const res = await fetch("/next");
+  const data = await res.json();
+  appendMessage("assistant", data.text);
 
-    const tts = new Audio();
-    tts.src = `/speak?text=${encodeURIComponent(data.text)}`;
-    tts.play();
-
-    // Start recording after short delay
-    tts.onended = () => {
-      startRecording();
-    };
-  } catch (error) {
-    console.error("حدث خطأ:", error);
-  }
+  const audio = new Audio();
+  audio.src = `/speak`;
+  await fetch("/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text: data.text })
+  })
+    .then((res) => res.blob())
+    .then((blob) => {
+      audio.src = URL.createObjectURL(blob);
+      audio.play();
+    });
 }
 
 function appendMessage(sender, text) {
@@ -34,9 +34,4 @@ function appendMessage(sender, text) {
   msg.innerHTML = `<strong>${sender === "user" ? "👤 أنت" : "🤖 المساعد"}:</strong> ${text}`;
   chat.appendChild(msg);
   chat.scrollTop = chat.scrollHeight;
-}
-
-function startRecording() {
-  // Placeholder for actual mic code (already implemented in your project)
-  console.log("🎙️ بدء التسجيل...");
 }
