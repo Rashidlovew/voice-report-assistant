@@ -1,3 +1,5 @@
+import openai
+print("✅ OpenAI version:", openai.__version__)
 import os
 import base64
 import tempfile
