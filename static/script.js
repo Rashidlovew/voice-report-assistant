@@ -27,38 +27,8 @@ async function playAudioStream(text) {
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.style.display = "block";
         audioPlayer.play();
-
-        // ⛔ المقاطعة: إذا بدأ المستخدم يتكلم نوقف الصوت فورًا
-        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
-            audioStream = stream;
-            const context = new AudioContext();
-            const mic = context.createMediaStreamSource(stream);
-            const analyser = context.createAnalyser();
-            const processor = context.createScriptProcessor(2048, 1, 1);
-            mic.connect(analyser);
-            analyser.connect(processor);
-            processor.connect(context.destination);
-            analyser.fftSize = 2048;
-
-            processor.onaudioprocess = () => {
-                const data = new Uint8Array(analyser.fftSize);
-                analyser.getByteTimeDomainData(data);
-                const rms = Math.sqrt(data.reduce((a, b) => a + Math.pow((b - 128) / 128, 2), 0) / data.length);
-                const volume = rms * 100;
-                if (volume > 5) {
-                    audioPlayer.pause();
-                    stream.getTracks().forEach(track => track.stop());
-                    context.close();
-                    resolve(); // نكمل بعد توقف الصوت
-                }
-            };
-
-            audioPlayer.onended = () => {
-                stream.getTracks().forEach(track => track.stop());
-                context.close();
-                resolve();
-            };
-        });
+        audioPlayer.onended = () => resolve();
+        audioPlayer.onerror = (err) => reject(err);
     });
 }
 
@@ -72,7 +42,7 @@ async function startRecording() {
     mediaRecorder.onstop = async () => {
         if (silenceTimeoutTriggered) {
             silenceTimeoutTriggered = false;
-            await playAudioStream("هل ترغب في إضافة شيء آخر؟ إذا نعم، تفضل بالتحدث الآن. وإذا لا، فقط قل تم.");
+            await playAudioStream("هل تود إضافة شيء آخر؟ إذا نعم، تفضل بالتحدث. وإذا لا، فقط قل تم.");
             startRecording();
             return;
         }
@@ -101,8 +71,8 @@ async function startRecording() {
 
     mediaRecorder.start();
     isRecording = true;
-    statusText.innerText = "🎤 جاري التسجيل...";
-    detectSilence(audioStream, stopRecording, 3000, 5);  // ⏱️ مهلة صمت = 3 ثوانٍ
+    statusText.innerText = "🎤 جاري الاستماع...";
+    detectSilence(audioStream, stopRecording, 3000, 5);  // ⏱️ مهلة صمت = 3 ثواني
 }
 
 function stopRecording() {
