@@ -86,24 +86,30 @@ def submit_audio():
 
     audio_bytes = base64.b64decode(audio_data.split(",")[1])
     audio_file = io.BytesIO(audio_bytes)
-    transcript = transcribe_audio(audio_file)
+    audio_file.name = "audio.webm"  # Important fix for OpenAI
 
+    transcript = transcribe_audio(audio_file)
     current_field = field_order[sessions[user_id]["step"]]
     interpretation = analyze_intent(transcript)
 
+    action = "next"
     if interpretation == "redo":
         response = f"↩️ يرجى إعادة إرسال {field_names_ar[current_field]}"
+        action = "redo"
     elif interpretation == "restart":
         sessions[user_id] = {"step": 0, "data": {}}
         current_field = field_order[0]
         response = field_prompts[current_field]
+        action = "restart"
     elif interpretation.startswith("field:"):
         target_field = interpretation.split(":")[1]
         if target_field in field_order:
             sessions[user_id]["step"] = field_order.index(target_field)
             response = f"🎙️ حسنًا، أعد إرسال {field_names_ar[target_field]}"
+            action = "redo"
         else:
             response = "❌ لم أفهم الطلب، حاول مرة أخرى."
+            action = "unknown"
     else:
         sessions[user_id]["data"][current_field] = transcript
         sessions[user_id]["step"] += 1
@@ -112,11 +118,16 @@ def submit_audio():
             send_email("frnreports@gmail.com", file_path)
             del sessions[user_id]
             response = "📄 تم إعداد التقرير وإرساله بنجاح عبر البريد الإلكتروني. شكرًا لتعاونك."
+            action = "done"
         else:
             next_field = field_order[sessions[user_id]["step"]]
             response = field_prompts[next_field]
 
-    return jsonify({"transcript": transcript, "response": response})
+    return jsonify({
+        "transcript": transcript,
+        "response": response,
+        "action": action
+    })
 
 # === Helpers ===
 
@@ -133,7 +144,7 @@ def analyze_intent(text):
     prompt = f"""
 حلل نية المستخدم بناءً على الجملة التالية:
 "{text}"
-هل يريد (الموافقة - الإعادة - إعادة من البداية - تصحيح حقل معين)؟
+هل يريد (الموافقة - الإعادة - إعادة من البداية - تصحيح حقل معين)؟ 
 أجب فقط بإحدى: approve, redo, restart, field:<field_name_in_english>, أو unknown.
 """
     res = client.chat.completions.create(
