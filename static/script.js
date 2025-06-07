@@ -1,123 +1,66 @@
-let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
-let audioStream;
-const statusText = document.getElementById("status");
-const audioPlayer = document.getElementById("audioPlayer");
-const transcriptionText = document.getElementById("transcriptionText");
-const responseText = document.getElementById("responseText");
+let currentField = "";
+const startBtn = document.getElementById("startBtn");
+const promptText = document.getElementById("prompt");
+const rephrasedText = document.getElementById("rephrased");
 
-let silenceTimeoutTriggered = false;
-let silenceCheckInterval;
+window.onload = async () => {
+  const res = await fetch("/start");
+  const data = await res.json();
+  currentField = data.nextField;
+  promptText.innerText = data.prompt;
+};
 
-async function startAssistant() {
-    statusText.innerText = "🎧 جاري التحميل...";
-    const greetingText = "مرحباً بك في مساعد إنشاء التقارير الخاص بقسم الهندسة الجنائية";
-    await playAudioStream(greetingText);
-    
-    const response = await fetch("/submitAudio", {
+startBtn.onclick = async () => {
+  startBtn.disabled = true;
+  rephrasedText.innerText = "🔊 جاري التسجيل...";
+
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  mediaRecorder = new MediaRecorder(stream);
+  audioChunks = [];
+
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0) audioChunks.push(event.data);
+  };
+
+  mediaRecorder.onstop = async () => {
+    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const base64data = reader.result;
+      const res = await fetch("/upload", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio: null })
-    });
+        body: JSON.stringify({ audio: base64data }),
+      });
+      const result = await res.json();
 
-    const result = await response.json();
-    responseText.innerText = result.response;
-    await playAudioStream(result.response);
-    startRecording();
-}
+      if (result.done) {
+        promptText.innerText = "✅ جاري إنشاء التقرير...";
+        await fetch("/generate-report");
+        rephrasedText.innerText = "📩 تم إرسال التقرير إلى البريد.";
+        return;
+      }
 
-async function playAudioStream(text) {
-    return new Promise((resolve, reject) => {
-        audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
-        audioPlayer.style.display = "block";
-        audioPlayer.play();
-        audioPlayer.onended = () => resolve();
-        audioPlayer.onerror = (err) => reject(err);
-    });
-}
+      currentField = result.nextField;
+      promptText.innerText = result.prompt;
+      rephrasedText.innerText = `✍️ إعادة الصياغة:\n${result.rephrased}`;
 
-async function startRecording() {
-    if (isRecording) return;
-
-    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(audioStream);
-    audioChunks = [];
-
-    mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-    mediaRecorder.onstop = async () => {
-        if (silenceTimeoutTriggered) {
-            silenceTimeoutTriggered = false;
-            await playAudioStream("هل تود إضافة شيء آخر؟ إذا نعم، تفضل بالتحدث. وإذا لا، فقط قل تم.");
-            startRecording();
-            return;
-        }
-
-        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
-        const reader = new FileReader();
-        reader.onloadend = async () => {
-            const base64Audio = reader.result;
-            const response = await fetch("/submitAudio", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ audio: base64Audio })
-            });
-
-            const result = await response.json();
-            transcriptionText.innerText = result.transcript;
-            responseText.innerText = result.response;
-            await playAudioStream(result.response);
-
-            if (result.action !== "done") {
-                startRecording();
-            } else {
-                statusText.innerText = "✅ تم الانتهاء من إعداد التقرير.";
-            }
-        };
-        reader.readAsDataURL(audioBlob);
+      // تشغيل الرد الصوتي
+      const audioRes = await fetch("/stream-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: result.rephrased }),
+      });
+      const audioBlob = await audioRes.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(audioUrl);
+      audio.play();
     };
+    reader.readAsDataURL(audioBlob);
+  };
 
-    mediaRecorder.start();
-    isRecording = true;
-    statusText.innerText = "🎤 جاري الاستماع...";
-    detectAdaptiveSilence(audioStream, stopRecording, 4000, 5);
-}
-
-function stopRecording() {
-    if (!isRecording) return;
-    isRecording = false;
-    mediaRecorder.stop();
-    if (audioStream) {
-        audioStream.getTracks().forEach(track => track.stop());
-    }
-    statusText.innerText = "⏸️ توقف التسجيل مؤقتاً.";
-}
-
-function detectAdaptiveSilence(stream, onSilence, silenceDelay = 4000, threshold = 5) {
-    const context = new AudioContext();
-    const analyser = context.createAnalyser();
-    const mic = context.createMediaStreamSource(stream);
-    const processor = context.createScriptProcessor(2048, 1, 1);
-    analyser.fftSize = 2048;
-    mic.connect(analyser);
-    analyser.connect(processor);
-    processor.connect(context.destination);
-
-    let lastSound = Date.now();
-
-    processor.onaudioprocess = () => {
-        const data = new Uint8Array(analyser.fftSize);
-        analyser.getByteTimeDomainData(data);
-        const rms = Math.sqrt(data.reduce((a, b) => a + Math.pow((b - 128) / 128, 2), 0) / data.length);
-        if (rms * 100 > threshold) {
-            lastSound = Date.now();
-        }
-        if (Date.now() - lastSound > silenceDelay && isRecording) {
-            silenceTimeoutTriggered = true;
-            onSilence();
-            mic.disconnect();
-            processor.disconnect();
-            context.close();
-        }
-    };
-}
+  mediaRecorder.start();
+  setTimeout(() => mediaRecorder.stop(), 6000);
+};
