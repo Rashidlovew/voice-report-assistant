@@ -52,11 +52,10 @@ def stream_audio():
 def submit_audio():
     user_id = request.remote_addr
     if user_id not in sessions:
-        sessions[user_id] = {"step": 0, "data": {}, "pending_confirmation": False}
+        sessions[user_id] = {"step": 0, "data": {}, "last_field": None}
 
     data = request.json
     audio_data = data.get("audio")
-    append_to = data.get("append_to", None)
 
     if not audio_data:
         field = field_order[sessions[user_id]["step"]]
@@ -69,6 +68,13 @@ def submit_audio():
     transcript = transcribe_audio(audio_file)
 
     step = sessions[user_id]["step"]
+    if step >= len(field_order):
+        return jsonify({
+            "transcript": transcript,
+            "response": "📄 جميع الحقول تم جمعها بالفعل.",
+            "action": "done"
+        })
+
     field = field_order[step]
     intent = detect_intent(transcript)
 
@@ -80,10 +86,11 @@ def submit_audio():
         })
 
     elif intent == "restart":
-        sessions[user_id] = {"step": 0, "data": {}, "pending_confirmation": False}
+        sessions[user_id] = {"step": 0, "data": {}, "last_field": None}
+        prompt = generate_prompt("Date")
         return jsonify({
             "transcript": transcript,
-            "response": "🔄 تم إعادة البدء. " + generate_prompt("Date"),
+            "response": "🔄 تم إعادة البدء. " + prompt,
             "action": "restart"
         })
 
@@ -91,17 +98,20 @@ def submit_audio():
         target = intent.split(":")[1]
         if target in field_order:
             sessions[user_id]["step"] = field_order.index(target)
+            prompt = generate_prompt(target)
             return jsonify({
                 "transcript": transcript,
-                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n" + generate_prompt(target),
+                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n" + prompt,
                 "action": "jump"
             })
 
-    # Append instead of overwrite
-    previous = sessions[user_id]["data"].get(field, "")
-    sessions[user_id]["data"][field] = previous + " " + transcript if previous else transcript
+    # Append to previous value if exists
+    prev_text = sessions[user_id]["data"].get(field, "")
+    sessions[user_id]["data"][field] = prev_text + " " + transcript if prev_text else transcript
 
-    reply = confirm_reply(field, sessions[user_id]["data"][field])
+    # ✅ تأكيد صياغي + الانتقال خطوة واحدة فقط إذا لم تكن مكررة
+    sessions[user_id]["last_field"] = field
+    confirm = confirm_reply(field, sessions[user_id]["data"][field])
     sessions[user_id]["step"] += 1
 
     if sessions[user_id]["step"] >= len(field_order):
@@ -110,14 +120,15 @@ def submit_audio():
         del sessions[user_id]
         return jsonify({
             "transcript": transcript,
-            "response": reply + "\n📩 تم إرسال التقرير عبر البريد الإلكتروني. شكرًا لتعاونك.",
+            "response": confirm + "\n📩 تم إرسال التقرير عبر البريد الإلكتروني. شكرًا لتعاونك.",
             "action": "done"
         })
     else:
         next_field = field_order[sessions[user_id]["step"]]
+        prompt = generate_prompt(next_field)
         return jsonify({
             "transcript": transcript,
-            "response": reply + "\n" + generate_prompt(next_field),
+            "response": confirm + "\n" + prompt,
             "action": "next"
         })
 
@@ -188,10 +199,8 @@ def send_email(to, file_path):
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = to
     msg.set_content("تم تجهيز التقرير الفني بناءً على البيانات المدخلة.")
-
     with open(file_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename=os.path.basename(file_path))
-
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
         smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
         smtp.send_message(msg)
