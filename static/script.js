@@ -1,6 +1,7 @@
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
+let audioStream;
 const statusText = document.getElementById("status");
 const audioPlayer = document.getElementById("audioPlayer");
 const transcriptionText = document.getElementById("transcriptionText");
@@ -26,16 +27,47 @@ async function playAudioStream(text) {
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.style.display = "block";
         audioPlayer.play();
-        audioPlayer.onended = () => resolve();
-        audioPlayer.onerror = (err) => reject(err);
+
+        // ⛔ المقاطعة: إذا بدأ المستخدم يتكلم نوقف الصوت فورًا
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+            audioStream = stream;
+            const context = new AudioContext();
+            const mic = context.createMediaStreamSource(stream);
+            const analyser = context.createAnalyser();
+            const processor = context.createScriptProcessor(2048, 1, 1);
+            mic.connect(analyser);
+            analyser.connect(processor);
+            processor.connect(context.destination);
+            analyser.fftSize = 2048;
+
+            processor.onaudioprocess = () => {
+                const data = new Uint8Array(analyser.fftSize);
+                analyser.getByteTimeDomainData(data);
+                const rms = Math.sqrt(data.reduce((a, b) => a + Math.pow((b - 128) / 128, 2), 0) / data.length);
+                const volume = rms * 100;
+                if (volume > 5) {
+                    audioPlayer.pause();
+                    stream.getTracks().forEach(track => track.stop());
+                    context.close();
+                    resolve(); // نكمل بعد توقف الصوت
+                }
+            };
+
+            audioPlayer.onended = () => {
+                stream.getTracks().forEach(track => track.stop());
+                context.close();
+                resolve();
+            };
+        });
     });
 }
 
 async function startRecording() {
     if (isRecording) return;
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    mediaRecorder = new MediaRecorder(stream);
+    audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(audioStream);
     audioChunks = [];
+
     mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
     mediaRecorder.onstop = async () => {
         if (silenceTimeoutTriggered) {
@@ -66,28 +98,33 @@ async function startRecording() {
         };
         reader.readAsDataURL(audioBlob);
     };
+
     mediaRecorder.start();
     isRecording = true;
     statusText.innerText = "🎤 جاري التسجيل...";
-    detectSilence(stream, stopRecording, 1500, 5);  // ⏱️ مهلة صمت 1.5 ثانية
+    detectSilence(audioStream, stopRecording, 3000, 5);  // ⏱️ مهلة صمت = 3 ثوانٍ
 }
 
 function stopRecording() {
     if (!isRecording) return;
     isRecording = false;
     mediaRecorder.stop();
+    if (audioStream) {
+        audioStream.getTracks().forEach(track => track.stop());
+    }
     statusText.innerText = "⏸️ توقف التسجيل مؤقتاً.";
 }
 
-function detectSilence(stream, onSilence, silenceDelay = 1500, threshold = 5) {
-    const audioContext = new AudioContext();
-    const analyser = audioContext.createAnalyser();
-    const mic = audioContext.createMediaStreamSource(stream);
-    const processor = audioContext.createScriptProcessor(2048, 1, 1);
+function detectSilence(stream, onSilence, silenceDelay = 3000, threshold = 5) {
+    const context = new AudioContext();
+    const analyser = context.createAnalyser();
+    const mic = context.createMediaStreamSource(stream);
+    const processor = context.createScriptProcessor(2048, 1, 1);
     analyser.fftSize = 2048;
     mic.connect(analyser);
     analyser.connect(processor);
-    processor.connect(audioContext.destination);
+    processor.connect(context.destination);
+
     let lastSound = Date.now();
     processor.onaudioprocess = () => {
         const data = new Uint8Array(analyser.fftSize);
@@ -99,7 +136,7 @@ function detectSilence(stream, onSilence, silenceDelay = 1500, threshold = 5) {
             onSilence();
             mic.disconnect();
             processor.disconnect();
-            audioContext.close();
+            context.close();
         }
     };
 }
