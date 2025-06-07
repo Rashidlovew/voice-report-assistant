@@ -1,66 +1,98 @@
 let mediaRecorder;
 let audioChunks = [];
+let currentField = "";
+let silenceTimeout;
+let recording = false;
 
-window.onload = async () => {
-  const res = await fetch("/next");
-  const data = await res.json();
-  speakAndDisplay(data.text);
-};
-
-async function speakAndDisplay(text) {
-  document.getElementById("response").innerText = text;
-  const response = await fetch("/speak", {
-    method: "POST",
-    headers: {"Content-Type": "application/json"},
-    body: JSON.stringify({ text })
-  });
-  const audioBlob = await response.blob();
-  const audioUrl = URL.createObjectURL(audioBlob);
-  const audio = new Audio(audioUrl);
-  audio.play();
-}
-
-function startRecording() {
-  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+const startRecording = async () => {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(stream);
     audioChunks = [];
 
-    mediaRecorder.ondataavailable = event => {
-      audioChunks.push(event.data);
+    mediaRecorder.ondataavailable = (event) => {
+        audioChunks.push(event.data);
     };
 
     mediaRecorder.onstop = async () => {
-      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
-      const formData = new FormData();
-      formData.append("audio", audioBlob);
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+        const base64Audio = await blobToBase64(audioBlob);
 
-      // Send audio to Whisper
-      const whisperResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
-        method: "POST",
-        headers: {
-          Authorization: "Bearer " + OPENAI_API_KEY, // ⚠️ Replace if not injected from backend
-        },
-        body: formData
-      });
+        const formData = new FormData();
+        formData.append("file", audioBlob, "audio.webm");
 
-      const whisperData = await whisperResponse.json();
-      const transcript = whisperData.text;
+        const res = await fetch("/transcribe", {
+            method: "POST",
+            body: formData
+        });
 
-      const replyRes = await fetch("/reply", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ text: transcript })
-      });
-      const replyData = await replyRes.json();
+        const { text } = await res.json();
+        appendMessage("أنت", text);
 
-      if (replyData.next) {
-        speakAndDisplay(replyData.text);
-      } else if (replyData.done) {
-        document.getElementById("response").innerText = "✅ تم استلام كل البيانات. شكرًا لك!";
-      }
+        const replyRes = await fetch("/speak", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text })
+        });
+
+        const replyData = await replyRes.json();
+        const reply = replyData.reply;
+        const audioResponse = await fetch("/audio", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ text: reply })
+        });
+
+        const audioBlob = await audioResponse.blob();
+        const audioUrl = URL.createObjectURL(audioBlob);
+        const audio = new Audio(audioUrl);
+        audio.play();
+
+        appendMessage("المساعد", reply);
+
+        if (replyData.done) {
+            document.getElementById("start-btn").disabled = true;
+        }
     };
 
     mediaRecorder.start();
-    setTimeout(() => mediaRecorder.stop(), 5000); // التسجيل لـ 5 ثواني فقط
-  });
-}
+    recording = true;
+    startSilenceDetection();
+};
+
+const stopRecording = () => {
+    if (mediaRecorder && recording) {
+        mediaRecorder.stop();
+        recording = false;
+    }
+    clearTimeout(silenceTimeout);
+};
+
+const startSilenceDetection = () => {
+    clearTimeout(silenceTimeout);
+    silenceTimeout = setTimeout(() => {
+        stopRecording();
+    }, 4000); // 4 seconds silence timeout
+};
+
+const blobToBase64 = (blob) => {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result.split(",")[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+};
+
+const appendMessage = (sender, text) => {
+    const chat = document.getElementById("chat");
+    const div = document.createElement("div");
+    div.className = sender === "أنت" ? "user" : "assistant";
+    div.innerText = text;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+};
+
+document.getElementById("start-btn").onclick = async () => {
+    appendMessage("المساعد", "🎙️ تفضل بالتحدث...");
+    await startRecording();
+};
