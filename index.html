@@ -1,27 +1,60 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <title>مساعد التقارير الصوتي</title>
-    <style>
-        body { font-family: 'Segoe UI', sans-serif; background-color: #f7f7f7; text-align: center; direction: rtl; }
-        #chat { max-width: 600px; margin: 20px auto; text-align: right; padding: 10px; background: #fff; border-radius: 8px; overflow-y: auto; height: 400px; border: 1px solid #ccc; }
-        .user { background: #d4edda; padding: 8px; margin: 5px; border-radius: 5px; }
-        .assistant { background: #f8d7da; padding: 8px; margin: 5px; border-radius: 5px; }
-        #controls { margin-top: 20px; }
-        #start-btn { padding: 12px 20px; font-size: 18px; background: #007bff; color: #fff; border: none; border-radius: 6px; cursor: pointer; }
-        #start-btn:hover { background: #0056b3; }
-    </style>
+  <meta charset="UTF-8" />
+  <title>مساعد إعداد التقارير</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap">
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      background-color: #f4f4f4;
+      direction: rtl;
+      text-align: right;
+      padding: 20px;
+    }
+
+    #chat {
+      background-color: white;
+      padding: 15px;
+      border-radius: 8px;
+      max-width: 600px;
+      margin: 20px auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      max-height: 400px;
+    }
+
+    #startButton {
+      display: block;
+      margin: 0 auto;
+      background-color: #0084ff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
+
+    .user {
+      color: #333;
+      font-weight: bold;
+      margin: 8px 0 4px;
+    }
+
+    .assistant {
+      color: #0084ff;
+      margin: 4px 0 8px;
+    }
+  </style>
 </head>
 <body>
-    <h1>👮‍♀️ مساعد إعداد تقارير الفحص</h1>
-    <div id="chat">
-        <div class="assistant">مرحباً بك في مساعد إنشاء التقارير الخاص بقسم الهندسة الجنائية. اضغط على الزر وابدأ بالتحدث.</div>
-    </div>
-    <div id="controls">
-        <button id="start-btn">🎙️ ابدأ التحدث</button>
-    </div>
+  <h2 style="text-align:center;">🤖 مساعد إعداد التقارير الجنائية</h2>
+  <div id="chat">
+    <!-- المحادثة تظهر هنا -->
+  </div>
+  <button id="startButton">🎙️ ابدأ المحادثة</button>
 
-    <script src="/static/script.js"></script>
+  <script src="/static/script.js"></script>
 </body>
 </html>
