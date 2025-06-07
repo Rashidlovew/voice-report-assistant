@@ -1,35 +1,42 @@
-import os
-import base64
-import tempfile
-from flask import Flask, request, jsonify, send_file
+from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
-from openai import OpenAI
+from werkzeug.utils import secure_filename
+import os
+import openai
+import base64
+import io
+import tempfile
 from docx import Document
 from docx.shared import Pt
 from docx.oxml.ns import qn
-from docx.oxml import OxmlElement
+import datetime
+from openai import OpenAI
+import smtplib
+from email.message import EmailMessage
+
+# === Config ===
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+EMAIL_ADDRESS = os.getenv("EMAIL_USER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASS")
+client = OpenAI(api_key=OPENAI_API_KEY)
 
 app = Flask(__name__)
 CORS(app)
 
-# Load OpenAI API key from environment variable
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# === Report Fields ===
+field_order = [
+    "Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"
+]
 
-# Load the report template
-TEMPLATE_PATH = "police_report_template.docx"
-DEFAULT_EMAIL = "frnreports@gmail.com"
-
-# Arabic field prompts (formal female tone)
 field_prompts = {
-    "Date": "🎙️ من فضلك، أخبريني بتاريخ الواقعة.",
-    "Briefing": "🎙️ يرجى تزويدي بموجز حول الواقعة.",
-    "LocationObservations": "🎙️ كيف كانت معاينة الموقع؟ يرجى التوضيح بالتفصيل.",
-    "Examination": "🎙️ ما هي نتيجة الفحص الفني؟",
-    "Outcomes": "🎙️ ما هي النتيجة بعد الفحص والمعاينة؟",
-    "TechincalOpinion": "🎙️ ما هو الرأي الفني في هذه الحالة؟"
+    "Date": "🎙️ أرسل تاريخ الواقعة.",
+    "Briefing": "🎙️ أرسل موجز الواقعة.",
+    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
 }
 
-# Field names in Arabic for document placeholders
 field_names_ar = {
     "Date": "التاريخ",
     "Briefing": "موجز الواقعة",
@@ -39,122 +46,137 @@ field_names_ar = {
     "TechincalOpinion": "الرأي الفني"
 }
 
-# In-memory session store
-user_sessions = {}
+sessions = {}
 
-# Format text in right-to-left, right-aligned Arabic
-def format_paragraph(paragraph):
-    run = paragraph.runs[0]
-    run.font.name = 'Dubai'
-    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Dubai')
-    run.font.size = Pt(13)
-    paragraph.alignment = 2  # Right aligned
-    paragraph.paragraph_format.right_to_left = True
+# === Routes ===
 
-# Fill the Word document with Arabic placeholders
-def generate_report(field_data):
-    doc = Document(TEMPLATE_PATH)
-    for paragraph in doc.paragraphs:
-        for key, value in field_data.items():
-            placeholder = f"{{{{{key}}}}}"
-            if placeholder in paragraph.text:
-                paragraph.text = paragraph.text.replace(placeholder, value)
-                format_paragraph(paragraph)
-    output_path = tempfile.NamedTemporaryFile(delete=False, suffix=".docx").name
-    doc.save(output_path)
-    return output_path
+@app.route("/")
+def index():
+    return render_template("index.html")
 
-# Analyze intent using OpenAI
-def analyze_intent(user_input):
-    prompt = f"""
-أنت مساعد ذكي يتعرف على نية المستخدم بناءً على الرد.
-الرد: "{user_input}"
-
-ما هي نية المستخدم؟ اختر واحدة فقط:
-- approve (إذا وافق على النص)
-- redo (إذا أراد إعادة الإدخال)
-- restart (إذا أراد البدء من جديد)
-- fieldCorrection (إذا أراد إعادة حقل معين)
-
-النية:
-"""
-    completion = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}],
-    )
-    result = completion.choices[0].message.content.strip().lower()
-    return result
+@app.route("/clientIP")
+def get_ip():
+    return jsonify({"ip": request.remote_addr})
 
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "")
-    speech = client.audio.speech.create(model="tts-1", voice="shimmer", input=text)
+    if not text:
+        return "No text", 400
+
+    speech = client.audio.speech.create(
+        model="tts-1",
+        voice="shimmer",
+        language="ar",
+        input=text
+    )
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     speech.stream_to_file(temp_file.name)
     return send_file(temp_file.name, mimetype="audio/mpeg")
 
 @app.route("/submitAudio", methods=["POST"])
-def handle_audio():
-    data = request.get_json()
-    audio_base64 = data["audio"].split(",")[1]
-    audio_bytes = base64.b64decode(audio_base64)
-    temp_audio = tempfile.NamedTemporaryFile(delete=False, suffix=".webm")
-    temp_audio.write(audio_bytes)
-    temp_audio.close()
+def submit_audio():
+    user_id = request.remote_addr
+    if user_id not in sessions:
+        sessions[user_id] = {"step": 0, "data": {}}
 
-    # Transcribe audio
-    with open(temp_audio.name, "rb") as f:
-        transcript_response = client.audio.transcriptions.create(model="whisper-1", file=f)
-        transcript_text = transcript_response.text.strip()
+    audio_data = request.json.get("audio")
+    if not audio_data:
+        return jsonify({"error": "No audio data provided"}), 400
 
-    user_id = "default_user"
-    session = user_sessions.setdefault(user_id, {"step": 0, "fields": {}})
+    audio_bytes = base64.b64decode(audio_data.split(",")[1])
+    audio_file = io.BytesIO(audio_bytes)
+    transcript = transcribe_audio(audio_file)
 
-    current_step = session["step"]
-    current_field = list(field_prompts.keys())[current_step]
+    current_field = field_order[sessions[user_id]["step"]]
+    interpretation = analyze_intent(transcript)
 
-    # Analyze response
-    intent = analyze_intent(transcript_text)
+    if interpretation == "redo":
+        response = f"↩️ يرجى إعادة إرسال {field_names_ar[current_field]}"
+    elif interpretation == "restart":
+        sessions[user_id] = {"step": 0, "data": {}}
+        current_field = field_order[0]
+        response = field_prompts[current_field]
+    elif interpretation.startswith("field:"):
+        target_field = interpretation.split(":")[1]
+        if target_field in field_order:
+            sessions[user_id]["step"] = field_order.index(target_field)
+            response = f"🎙️ حسنًا، أعد إرسال {field_names_ar[target_field]}"
+        else:
+            response = "❌ لم أفهم الطلب، حاول مرة أخرى."
+    else:
+        sessions[user_id]["data"][current_field] = transcript
+        sessions[user_id]["step"] += 1
+        if sessions[user_id]["step"] >= len(field_order):
+            file_path = generate_report(sessions[user_id]["data"])
+            send_email("frnreports@gmail.com", file_path)
+            del sessions[user_id]
+            response = "📄 تم إعداد التقرير وإرساله بنجاح عبر البريد الإلكتروني. شكرًا لتعاونك."
+        else:
+            next_field = field_order[sessions[user_id]["step"]]
+            response = field_prompts[next_field]
 
-    if intent == "redo":
-        reply = f"↩️ لا بأس، يرجى إعادة {field_names_ar[current_field]}."
-        return jsonify({"transcript": transcript_text, "response": reply})
+    return jsonify({"transcript": transcript, "response": response})
 
-    elif intent == "restart":
-        user_sessions[user_id] = {"step": 0, "fields": {}}
-        first_prompt = list(field_prompts.values())[0]
-        return jsonify({"transcript": transcript_text, "response": f"🔄 تم البدء من جديد. {first_prompt}"})
+# === Helpers ===
 
-    elif intent == "fieldCorrection":
-        reply = "↩️ يرجى تحديد الحقل الذي ترغب في تعديله."
-        return jsonify({"transcript": transcript_text, "response": reply})
+def transcribe_audio(audio_file):
+    result = client.audio.transcriptions.create(
+        model="whisper-1",
+        file=audio_file,
+        response_format="text",
+        language="ar"
+    )
+    return result.strip()
 
-    # Save field and continue
-    session["fields"][current_field] = transcript_text
-    session["step"] += 1
+def analyze_intent(text):
+    prompt = f"""
+حلل نية المستخدم بناءً على الجملة التالية:
+"{text}"
+هل يريد (الموافقة - الإعادة - إعادة من البداية - تصحيح حقل معين)؟
+أجب فقط بإحدى: approve, redo, restart, field:<field_name_in_english>, أو unknown.
+"""
+    res = client.chat.completions.create(
+        model="gpt-4o",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    intent = res.choices[0].message.content.strip()
+    return intent
 
-    if session["step"] >= len(field_prompts):
-        doc_path = generate_report(session["fields"])
-        session.clear()
-        return jsonify({
-            "transcript": transcript_text,
-            "response": "✅ تم إنشاء التقرير بنجاح. سيتم إرساله إلى البريد الإلكتروني.",
-            "download_url": "/download-report?path=" + doc_path
-        })
+def generate_report(data):
+    doc = Document("police_report_template.docx")
+    for para in doc.paragraphs:
+        for key, value in data.items():
+            if f"{{{{{key}}}}}" in para.text:
+                para.text = para.text.replace(f"{{{{{key}}}}}", value)
+                para.rtl = True
+                para.paragraph_format.alignment = 2  # Right align
+                run = para.runs[0]
+                run.font.name = 'Dubai'
+                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Dubai')
+                run.font.size = Pt(13)
 
-    next_field = list(field_prompts.keys())[session["step"]]
-    return jsonify({"transcript": transcript_text, "response": field_prompts[next_field]})
+    now = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_path = f"/tmp/report_{now}.docx"
+    doc.save(file_path)
+    return file_path
 
-@app.route("/download-report")
-def download_report():
-    path = request.args.get("path")
-    if not path or not os.path.exists(path):
-        return "Report not found", 404
-    return send_file(path, as_attachment=True)
+def send_email(to, file_path):
+    msg = EmailMessage()
+    msg["Subject"] = "📄 التقرير الفني بعد الفحص"
+    msg["From"] = EMAIL_ADDRESS
+    msg["To"] = to
+    msg.set_content("تم إعداد التقرير الفني بناءً على المعلومات المرسلة.")
 
-@app.route("/")
-def home():
-    return "Voice Report Assistant is running."
+    with open(file_path, "rb") as f:
+        file_data = f.read()
+        file_name = os.path.basename(file_path)
+        msg.add_attachment(file_data, maintype="application", subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename=file_name)
 
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(EMAIL_ADDRESS, EMAIL_PASSWORD)
+        smtp.send_message(msg)
+
+# === Run App ===
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
