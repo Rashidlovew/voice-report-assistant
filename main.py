@@ -64,10 +64,10 @@ def stream_audio():
     if not text:
         return "No text", 400
 
+    # ✅ FIXED: Removed language="ar"
     speech = client.audio.speech.create(
         model="tts-1",
         voice="shimmer",
-        language="ar",
         input=text
     )
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
@@ -86,7 +86,7 @@ def submit_audio():
 
     audio_bytes = base64.b64decode(audio_data.split(",")[1])
     audio_file = io.BytesIO(audio_bytes)
-    audio_file.name = "audio.webm"  # Important fix for OpenAI
+    audio_file.name = "audio.webm"  # Important for OpenAI to recognize format
 
     transcript = transcribe_audio(audio_file)
     current_field = field_order[sessions[user_id]["step"]]
