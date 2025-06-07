@@ -1,97 +1,66 @@
 let mediaRecorder;
-let chunks = [];
-let currentField = "Date";
+let audioChunks = [];
 
-// تحميل أول سؤال
 window.onload = async () => {
   const res = await fetch("/next");
   const data = await res.json();
-  currentField = data.field;
-  speak(data.prompt);
+  speakAndDisplay(data.text);
 };
 
-// زر بدء التسجيل
-document.getElementById("startBtn").onclick = async () => {
-  const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-  mediaRecorder = new MediaRecorder(stream);
-  chunks = [];
-
-  mediaRecorder.ondataavailable = (e) => {
-    if (e.data.size > 0) chunks.push(e.data);
-  };
-
-  mediaRecorder.onstop = () => {
-    const blob = new Blob(chunks, { type: "audio/webm" });
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      sendAudio(reader.result);
-    };
-    reader.readAsDataURL(blob);
-  };
-
-  mediaRecorder.start();
-  speak("🎤 تم بدء التسجيل. تحدث الآن لمدة 6 ثوانٍ...");
-  setTimeout(() => mediaRecorder.stop(), 6000);
-};
-
-// زر الإيقاف اليدوي
-document.getElementById("stopBtn").onclick = () => {
-  if (mediaRecorder && mediaRecorder.state === "recording") {
-    mediaRecorder.stop();
-    speak("⏹️ تم إيقاف التسجيل.");
-  }
-};
-
-// إرسال الصوت إلى /transcribe
-async function sendAudio(base64Audio) {
-  const res = await fetch("/transcribe", {
+async function speakAndDisplay(text) {
+  document.getElementById("response").innerText = text;
+  const response = await fetch("/speak", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ audio: base64Audio, field: currentField }),
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ text })
   });
-  const data = await res.json();
-  if (data.text) {
-    showResult(currentField, data.text);
-    speak(data.text);
-    await delay(3000);
-    askNext();
-  } else {
-    speak("حدث خطأ أثناء المعالجة.");
-  }
-}
-
-// عرض الرد
-function showResult(field, value) {
-  const container = document.getElementById("result");
-  container.innerHTML += `<p><b>${field}:</b> ${value}</p>`;
-}
-
-// طلب الحقل التالي
-async function askNext() {
-  const res = await fetch("/next");
-  const data = await res.json();
-  if (data.done) {
-    speak("✅ تم الانتهاء من جميع الحقول. شكراً لك.");
-  } else {
-    currentField = data.field;
-    speak(data.prompt);
-  }
-}
-
-// تشغيل صوت من الخادم
-async function speak(text) {
-  const res = await fetch("/speak", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
-  });
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  const audio = new Audio(url);
+  const audioBlob = await response.blob();
+  const audioUrl = URL.createObjectURL(audioBlob);
+  const audio = new Audio(audioUrl);
   audio.play();
 }
 
-// تأخير بسيط
-function delay(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
+function startRecording() {
+  navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
+
+    mediaRecorder.ondataavailable = event => {
+      audioChunks.push(event.data);
+    };
+
+    mediaRecorder.onstop = async () => {
+      const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+      const formData = new FormData();
+      formData.append("audio", audioBlob);
+
+      // Send audio to Whisper
+      const whisperResponse = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer " + OPENAI_API_KEY, // ⚠️ Replace if not injected from backend
+        },
+        body: formData
+      });
+
+      const whisperData = await whisperResponse.json();
+      const transcript = whisperData.text;
+
+      const replyRes = await fetch("/reply", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({ text: transcript })
+      });
+      const replyData = await replyRes.json();
+
+      if (replyData.next) {
+        speakAndDisplay(replyData.text);
+      } else if (replyData.done) {
+        document.getElementById("response").innerText = "✅ تم استلام كل البيانات. شكرًا لك!";
+      }
+    };
+
+    mediaRecorder.start();
+    setTimeout(() => mediaRecorder.stop(), 5000); // التسجيل لـ 5 ثواني فقط
+  });
 }
