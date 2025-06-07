@@ -1,42 +1,60 @@
-document.addEventListener("DOMContentLoaded", () => {
-  const startButton = document.getElementById("startButton");
-  startButton.addEventListener("click", startConversation);
-});
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8" />
+  <title>مساعد إعداد التقارير</title>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;700&display=swap">
+  <style>
+    body {
+      font-family: 'Cairo', sans-serif;
+      background-color: #f4f4f4;
+      direction: rtl;
+      text-align: right;
+      padding: 20px;
+    }
 
-async function startConversation() {
-  appendMessage("assistant", "🔊 جاري بدء المحادثة...");
-  await speakAndListen("/next");
-}
+    #chat {
+      background-color: white;
+      padding: 15px;
+      border-radius: 8px;
+      max-width: 600px;
+      margin: 20px auto;
+      box-shadow: 0 0 10px rgba(0,0,0,0.1);
+      overflow-y: auto;
+      max-height: 400px;
+    }
 
-async function speakAndListen(endpoint) {
-  try {
-    const response = await fetch(endpoint);
-    const data = await response.json();
-    appendMessage("assistant", data.text);
+    #startButton {
+      display: block;
+      margin: 0 auto;
+      background-color: #0084ff;
+      color: white;
+      border: none;
+      padding: 12px 20px;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+    }
 
-    const tts = new Audio();
-    tts.src = `/speak?text=${encodeURIComponent(data.text)}`;
-    tts.play();
+    .user {
+      color: #333;
+      font-weight: bold;
+      margin: 8px 0 4px;
+    }
 
-    // Start recording after short delay
-    tts.onended = () => {
-      startRecording();
-    };
-  } catch (error) {
-    console.error("حدث خطأ:", error);
-  }
-}
+    .assistant {
+      color: #0084ff;
+      margin: 4px 0 8px;
+    }
+  </style>
+</head>
+<body>
+  <h2 style="text-align:center;">🤖 مساعد إعداد التقارير الجنائية</h2>
+  <div id="chat">
+    <!-- المحادثة تظهر هنا -->
+  </div>
+  <button id="startButton">🎙️ ابدأ المحادثة</button>
 
-function appendMessage(sender, text) {
-  const chat = document.getElementById("chat");
-  const msg = document.createElement("div");
-  msg.className = sender;
-  msg.innerHTML = `<strong>${sender === "user" ? "👤 أنت" : "🤖 المساعد"}:</strong> ${text}`;
-  chat.appendChild(msg);
-  chat.scrollTop = chat.scrollHeight;
-}
-
-function startRecording() {
-  // Placeholder for actual mic code (already implemented in your project)
-  console.log("🎙️ بدء التسجيل...");
-}
+  <script src="/static/script.js"></script>
+</body>
+</html>
