@@ -1,41 +1,22 @@
-
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8" />
-    <title>مساعد إعداد التقارير الصوتي</title>
+    <title>مساعد التقرير الصوتي</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            text-align: center;
-            padding: 50px;
-            background-color: #f0f0f0;
-        }
-        h1 {
-            font-size: 24px;
-        }
-        button {
-            font-size: 18px;
-            padding: 10px 20px;
-            margin-top: 20px;
-        }
-        .status {
-            margin: 20px 0;
-        }
-        .field-buttons button {
-            margin: 5px;
-        }
+        body { font-family: Arial; background: #f7f7f7; text-align: center; padding: 30px; }
+        h1 { font-size: 24px; margin-bottom: 20px; }
+        button { padding: 10px 20px; font-size: 18px; }
+        .status, .text-block { margin: 20px 0; }
     </style>
 </head>
 <body>
-    <h1>📝 مساعد إعداد التقارير الصوتي</h1>
-    <div class="status"><span id="status">⏳ جاري التحميل...</span></div>
-    <button onclick="startAssistant()">ابدأ 🗣️</button>
-    <p><strong>📄 التفريغ:</strong> <span id="transcriptionText"></span></p>
-    <p><strong>💬 الرد:</strong> <span id="responseText"></span></p>
+    <h1>🎤 مساعد إعداد التقارير</h1>
+    <button onclick="startAssistant()">ابدأ الآن</button>
+    <div class="status" id="status">جاهز</div>
+    <div class="text-block">📄 التفريغ: <span id="transcriptionText"></span></div>
+    <div class="text-block">💬 المساعد: <span id="responseText"></span></div>
     <audio id="audioPlayer" controls style="display:none;"></audio>
-    <div class="field-buttons" id="fieldButtons"></div>
-
     <script src="/static/script.js"></script>
 </body>
 </html>
