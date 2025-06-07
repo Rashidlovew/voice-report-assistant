@@ -9,17 +9,17 @@ from elevenlabs import Voice, VoiceSettings, set_api_key, generate
 app = Flask(__name__)
 CORS(app)
 
-# Set API Keys
+# إعداد مفاتيح API
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 set_api_key(os.getenv("ELEVENLABS_API_KEY"))
 
-# Session storage
+# بيانات المستخدم
 user_session = {
     "current_field": "Date",
     "fields": {},
 }
 
-# Arabic prompts
+# ترتيب الحقول
 field_prompts = {
     "Date": "🎙️ أخبرني عن تاريخ الواقعة.",
     "Briefing": "🎙️ ما هو موجز الواقعة؟",
@@ -30,7 +30,11 @@ field_prompts = {
 }
 field_order = list(field_prompts.keys())
 
-# Stream TTS reply using ElevenLabs (Rachel)
+# نقطة البداية (رسالة ترحيب + أول سؤال)
+@app.route("/")
+def home():
+    return "🎙️ المساعد الصوتي يعمل!"
+
 @app.route("/stream-audio")
 def stream_audio():
     text = request.args.get("text", "")
@@ -47,7 +51,7 @@ def stream_audio():
         f.write(audio)
     return send_file(temp_path, mimetype="audio/mpeg")
 
-# Transcribe and respond
+# استلام الصوت من الواجهة
 @app.route("/submitAudio", methods=["POST"])
 def submit_audio():
     data = request.get_json()
@@ -59,21 +63,22 @@ def submit_audio():
             "transcript": ""
         })
 
+    # حفظ ملف الصوت مؤقتاً
     audio_data = base64.b64decode(audio_b64.split(",")[1])
     with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
         f.write(audio_data)
         f.flush()
         audio_path = f.name
 
-    # Whisper transcription
+    # تحويل الصوت إلى نص
     result = client.audio.transcriptions.create(
         model="whisper-1",
         file=open(audio_path, "rb"),
         language="ar"
     )
-    transcript = result.text
+    transcript = result.text.strip()
 
-    # Rephrase via GPT
+    # إعادة الصياغة باستخدام GPT
     field = user_session["current_field"]
     gpt_result = client.chat.completions.create(
         model="gpt-4",
@@ -85,7 +90,7 @@ def submit_audio():
     rephrased = gpt_result.choices[0].message.content.strip()
     user_session["fields"][field] = rephrased
 
-    # Move to next field
+    # الانتقال إلى الحقل التالي
     next_index = field_order.index(field) + 1
     if next_index < len(field_order):
         next_field = field_order[next_index]
@@ -97,16 +102,9 @@ def submit_audio():
             "transcript": rephrased
         })
     else:
-        # Final message
         return jsonify({
             "response": "✅ تم استلام جميع البيانات. يتم الآن تجهيز التقرير.",
             "action": "done",
             "transcript": rephrased
         })
 
-@app.route("/")
-def home():
-    return "👮 Voice Assistant is running."
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
