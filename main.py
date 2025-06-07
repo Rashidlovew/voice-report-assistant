@@ -1,43 +1,41 @@
-import openai
-print("✅ OpenAI version:", openai.__version__)
-
 import os
 import base64
 import tempfile
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 from openai import OpenAI
-
-# إعداد OpenAI client بدون تمرير proxies
-client = OpenAI()
-
-# بعد إنشاء العميل، نستدعي ElevenLabs
 from elevenlabs import Voice, VoiceSettings, set_api_key, generate
-set_api_key(os.getenv("ELEVENLABS_API_KEY"))
-
 from docxtpl import DocxTemplate
-from pydub import AudioSegment
 import smtplib
 from email.message import EmailMessage
+from pydub import AudioSegment
+
+# ✅ التحقق من نسخة openai
+import openai
+print("✅ OpenAI version:", openai.__version__)
 
 app = Flask(__name__)
 CORS(app)
 
-# تخزين الجلسة
+# إعداد مفاتيح API
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+set_api_key(os.getenv("ELEVENLABS_API_KEY"))
+
+# بيانات المستخدم
 user_session = {
     "current_field": "Date",
-    "fields": {}
+    "fields": {},
 }
 
 field_order = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"]
 
 field_prompts = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و إجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+    "Date": "📅 ما هو تاريخ الواقعة؟",
+    "Briefing": "📝 أخبرني عن موجز الواقعة.",
+    "LocationObservations": "👁️ ماذا لاحظت عند معاينة موقع الحادث؟",
+    "Examination": "🔬 ما نتيجة الفحص الفني؟",
+    "Outcomes": "📌 ما هي النتائج بعد الفحص؟",
+    "TechincalOpinion": "🧠 ما هو رأيك الفني؟"
 }
 
 field_names_ar = {
@@ -50,97 +48,132 @@ field_names_ar = {
 }
 
 @app.route("/")
-def index():
-    return "✅ Arabic Voice Report Assistant is running."
+def home():
+    return "🎙️ Voice Report Assistant is running."
 
-@app.route("/stream-audio")
-def stream_audio():
-    text = request.args.get("text", "")
-    audio = generate(
-        text=text,
-        voice=Voice(
-            voice_id="EXAVITQu4vr4xnSDxMaL",  # Rachel's voice
-            settings=VoiceSettings(stability=0.5, similarity_boost=0.75)
-        )
-    )
-    return audio, 200, {"Content-Type": "audio/mpeg"}
+@app.route("/start", methods=["GET"])
+def start_session():
+    user_session["current_field"] = "Date"
+    user_session["fields"] = {}
+    return jsonify({
+        "message": "مرحباً بك في مساعد إنشاء التقارير الخاص بقسم الهندسة الجنائية.",
+        "nextField": "Date",
+        "prompt": field_prompts["Date"]
+    })
 
-@app.route("/submitAudio", methods=["POST"])
-def submit_audio():
-    audio_file = request.files["audio"]
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as temp_file:
-        audio_path = temp_file.name
-        audio_file.save(audio_path)
+@app.route("/upload", methods=["POST"])
+def upload_audio():
+    data = request.json
+    audio_base64 = data.get("audio")
+    if not audio_base64:
+        return jsonify({"error": "No audio provided"}), 400
 
-    audio = AudioSegment.from_file(audio_path)
-    wav_path = audio_path.replace(".webm", ".wav")
-    audio.export(wav_path, format="wav")
+    # حفظ الملف الصوتي مؤقتاً
+    audio_data = base64.b64decode(audio_base64.split(",")[1])
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+        f.write(audio_data)
+        input_path = f.name
 
+    # تحويله إلى wav
+    wav_path = input_path.replace(".webm", ".wav")
+    AudioSegment.from_file(input_path).export(wav_path, format="wav")
+
+    # إرسال إلى Whisper
     with open(wav_path, "rb") as f:
         transcript = client.audio.transcriptions.create(
             model="whisper-1",
-            file=f
-        ).text
+            file=f,
+            response_format="text",
+            language="ar"
+        )
 
-    # Rephrase the transcription using ChatGPT
-    completion = client.chat.completions.create(
-        model="gpt-4",
+    # إعادة الصياغة
+    rephrased = client.chat.completions.create(
+        model="gpt-4o",
         messages=[
-            {"role": "system", "content": "أعد صياغة هذا النص بصيغة تقرير شرطي رسمية باللغة العربية."},
+            {"role": "system", "content": "أعد صياغة هذا الإدخال بأسلوب مهني لتقرير فحص هندسي جنائي."},
             {"role": "user", "content": transcript}
         ]
-    )
+    ).choices[0].message.content.strip()
 
-    rephrased_text = completion.choices[0].message.content
-    current_field = user_session["current_field"]
-    user_session["fields"][current_field] = rephrased_text
+    # حفظ الرد
+    current = user_session["current_field"]
+    user_session["fields"][current] = rephrased
 
-    # الإنتقال للسؤال التالي
-    next_index = field_order.index(current_field) + 1
-    if next_index < len(field_order):
-        next_field = field_order[next_index]
+    # الانتقال للسؤال التالي
+    next_field = get_next_field(current)
+    if next_field:
         user_session["current_field"] = next_field
         return jsonify({
             "transcript": transcript,
-            "rephrased": rephrased_text,
-            "next_prompt": field_prompts[next_field]
+            "rephrased": rephrased,
+            "nextField": next_field,
+            "prompt": field_prompts[next_field]
         })
     else:
+        # اكتملت جميع الحقول
         return jsonify({
             "transcript": transcript,
-            "rephrased": rephrased_text,
-            "next_prompt": None  # End of flow
+            "rephrased": rephrased,
+            "nextField": None,
+            "prompt": "✅ تم استلام جميع البيانات. جاري إنشاء التقرير...",
+            "done": True
         })
 
-@app.route("/generateReport", methods=["GET"])
+def get_next_field(current):
+    i = field_order.index(current)
+    if i + 1 < len(field_order):
+        return field_order[i + 1]
+    return None
+
+@app.route("/stream-audio", methods=["POST"])
+def stream_audio():
+    data = request.json
+    message = data.get("message", "مرحباً")
+    audio_stream = client.audio.speech.create(
+        model="tts-1",
+        voice="shimmer",  # صوت أنثوي رسمي عربي
+        input=message
+    )
+    temp = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    for chunk in audio_stream.iter_bytes():
+        temp.write(chunk)
+    temp.close()
+    return send_file(temp.name, mimetype="audio/mpeg")
+
+@app.route("/generate-report", methods=["GET"])
 def generate_report():
     doc = DocxTemplate("police_report_template.docx")
-    doc.render(user_session["fields"])
-    output_path = "/tmp/final_report.docx"
-    doc.save(output_path)
+    context = {field: user_session["fields"].get(field, "") for field in field_order}
+    doc.render(context)
 
-    # إرسال التقرير بالإيميل
-    send_report_by_email(output_path)
+    report_path = "generated_report.docx"
+    doc.save(report_path)
 
-    return send_file(output_path, as_attachment=True)
+    send_email(report_path)
+    return send_file(report_path, as_attachment=True)
 
-def send_report_by_email(file_path):
+def send_email(attachment_path):
+    email_user = os.getenv("EMAIL_USERNAME")
+    email_pass = os.getenv("EMAIL_PASSWORD")
+    recipient = "frnreports@gmail.com"
+
     msg = EmailMessage()
-    msg["Subject"] = "📄 التقرير الفني من المساعد الصوتي"
-    msg["From"] = "noreply@voice-assistant.com"
-    msg["To"] = "frnreports@gmail.com"
-    msg.set_content("تم إنشاء التقرير بنجاح وإرفاقه في هذا البريد.\n\nتحياتنا.")
+    msg["Subject"] = "📄 التقرير الفني"
+    msg["From"] = email_user
+    msg["To"] = recipient
+    msg.set_content("يرجى مراجعة التقرير الفني المرفق 🔍.")
 
-    with open(file_path, "rb") as f:
+    with open(attachment_path, "rb") as f:
         file_data = f.read()
-        file_name = os.path.basename(file_path)
+        file_name = os.path.basename(attachment_path)
+        msg.add_attachment(file_data, maintype="application", subtype="octet-stream", filename=file_name)
 
-    msg.add_attachment(file_data, maintype="application", subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename=file_name)
-
-    with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-        smtp.starttls()
-        smtp.login(os.getenv("EMAIL_USERNAME"), os.getenv("EMAIL_PASSWORD"))
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        smtp.login(email_user, email_pass)
         smtp.send_message(msg)
 
+# ✅ تأكد من تشغيل السيرفر على Render
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
