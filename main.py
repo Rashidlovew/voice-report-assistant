@@ -1,38 +1,39 @@
 import os
 import tempfile
 import base64
-from flask import Flask, request, jsonify, send_file
+import time
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 from openai import OpenAI
-from elevenlabs import generate, save, set_api_key, Voice, VoiceSettings
+from elevenlabs import generate, save, set_api_key
 from docxtpl import DocxTemplate
-from datetime import datetime
-import speech_recognition as sr
 
 app = Flask(__name__)
 CORS(app)
 
-# إعداد المفاتيح
-openai_api_key = os.getenv("OPENAI_API_KEY")
-elevenlabs_api_key = os.getenv("ELEVENLABS_API_KEY")
-client = OpenAI(api_key=openai_api_key)
-set_api_key(elevenlabs_api_key)
+# API keys
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+set_api_key(os.getenv("ELEVENLABS_API_KEY"))
 
-# إعداد الصوت - Hala صوت عربي
-voice_id = "EXAVITQu4vr4xnSDxMaL"
+# Voice setup
+voice_id = "EXAVITQu4vr4xnSDxMaL"  # Hala
 
-# إعدادات المشروع
-report_fields = [
-    "Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"
-]
+# Session state
+user_session = {
+    "current_field": "Date",
+    "fields": {},
+    "history": [],
+}
+
+field_order = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"]
 
 field_prompts = {
-    "Date": "🎙️ أخبرني بتاريخ الواقعة.",
-    "Briefing": "🎙️ ما هو موجز الواقعة؟",
-    "LocationObservations": "🎙️ ماذا لاحظت عند معاينة موقع الحادث؟",
-    "Examination": "🎙️ ما نتائج الفحص الفني؟",
-    "Outcomes": "🎙️ ما هي النتائج التي توصلت إليها؟",
-    "TechincalOpinion": "🎙️ ما هو الرأي الفني النهائي؟"
+    "Date": "🗓️ ما هو تاريخ الواقعة؟",
+    "Briefing": "📌 أخبرني باختصار عن الواقعة.",
+    "LocationObservations": "👁️ ماذا لاحظت في موقع الحادث؟",
+    "Examination": "🧪 ما نتيجة الفحص الفني؟",
+    "Outcomes": "📊 ما النتيجة التي توصلت لها بعد الفحص؟",
+    "TechincalOpinion": "🧠 ما هو رأيك الفني النهائي؟"
 }
 
 field_names_ar = {
@@ -44,81 +45,102 @@ field_names_ar = {
     "TechincalOpinion": "الرأي الفني"
 }
 
-user_session = {
-    "current_field_index": 0,
-    "fields": {}
-}
 
-def speak_text(text):
-    audio_stream = generate(
-        text=text,
-        voice=Voice(voice_id=voice_id, settings=VoiceSettings(stability=0.4, similarity_boost=0.75)),
-        model="eleven_multilingual_v2",
-        stream=True
-    )
+def speak(text):
+    audio = generate(text=text, voice=voice_id, model="eleven_monolingual_v1")
     with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as f:
-        save(audio_stream, f.name)
+        save(audio, f.name)
         return f.name
 
-@app.route("/", methods=["GET"])
-def greet():
-    greeting_text = "مرحباً بك. هذا هو مساعد التقارير الخاص بقسم الهندسة الجنائية. أنا هنا لمساعدتك في كتابة تقرير رسمي خطوة بخطوة."
-    audio_path = speak_text(greeting_text)
-    return send_file(audio_path, mimetype="audio/mpeg")
+
+def get_next_field():
+    for field in field_order:
+        if field not in user_session["fields"]:
+            return field
+    return None
+
 
 @app.route("/next", methods=["GET"])
-def next_prompt():
-    idx = user_session["current_field_index"]
-    if idx >= len(report_fields):
-        return jsonify({"done": True})
-    current_field = report_fields[idx]
-    prompt = field_prompts[current_field]
-    audio_path = speak_text(prompt)
-    return send_file(audio_path, mimetype="audio/mpeg")
+def get_next():
+    field = get_next_field()
+    if field:
+        user_session["current_field"] = field
+        prompt = field_prompts[field]
+        return jsonify({"field": field, "prompt": prompt})
+    return jsonify({"done": True})
+
 
 @app.route("/speak", methods=["POST"])
-def receive_input():
-    data = request.get_json()
-    user_text = data.get("text", "")
+def handle_speak():
+    data = request.json
+    text = data.get("text", "").strip()
+    field = user_session["current_field"]
 
-    idx = user_session["current_field_index"]
-    current_field = report_fields[idx]
+    if not text:
+        return jsonify({"reply": "لم أسمع شيئاً. هل يمكنك التحدث مجدداً؟"})
 
-    # Rephrase input using GPT
+    # Step 1: Rephrase input
     response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": f"صغ هذا النص بأسلوب تقرير شرطة رسمي: {user_text}"}],
+        messages=[
+            {"role": "system", "content": "أعد صياغة هذا الإدخال ليكون بلغة رسمية مناسبة لتقرير شرطة، مع الحفاظ على المعنى الكامل."},
+            {"role": "user", "content": text}
+        ],
+        model="gpt-4"
     )
     rephrased = response.choices[0].message.content.strip()
-    user_session["fields"][current_field] = rephrased
-    user_session["current_field_index"] += 1
 
-    # الرد الصوتي
-    if user_session["current_field_index"] < len(report_fields):
-        next_field = report_fields[user_session["current_field_index"]]
-        next_prompt = field_prompts[next_field]
-        audio_path = speak_text(f"تم تسجيل {field_names_ar[current_field]}. {next_prompt}")
+    # Step 2: Detect intent
+    intent_response = client.chat.completions.create(
+        messages=[
+            {"role": "system", "content": "حلل نية المستخدم بناءً على هذا الإدخال الصوتي. هل ينوي (تأكيد، إعادة، تعديل، إضافة، الرجوع لحقل سابق)؟ أجب بكلمة واحدة فقط: تأكيد، إعادة، تعديل، إضافة، رجوع."},
+            {"role": "user", "content": text}
+        ],
+        model="gpt-4"
+    )
+    intent = intent_response.choices[0].message.content.strip()
+
+    if intent == "إعادة":
+        prompt = field_prompts[field]
+        return jsonify({"reply": prompt, "field": field})
+
+    elif intent == "تعديل":
+        return jsonify({"reply": f"يرجى إعادة إرسال {field_names_ar[field]}.", "field": field})
+
+    elif intent == "إضافة":
+        user_session["fields"][field] += " " + rephrased
+        return jsonify({"reply": "تمت إضافة المعلومة. هل نتابع؟", "field": field})
+
+    elif intent == "رجوع":
+        previous_index = field_order.index(field) - 1
+        if previous_index >= 0:
+            previous_field = field_order[previous_index]
+            user_session["current_field"] = previous_field
+            return jsonify({"reply": field_prompts[previous_field], "field": previous_field})
+
+    # Default: تأكيد
+    user_session["fields"][field] = rephrased
+    next_field = get_next_field()
+    if next_field:
+        user_session["current_field"] = next_field
+        reply = f"{field_names_ar[field]} تم تسجيله ✅ الآن {field_prompts[next_field]}"
+        return jsonify({"reply": reply, "field": next_field})
     else:
-        audio_path = speak_text("تم تسجيل جميع الحقول. سيتم الآن إرسال التقرير عبر البريد الإلكتروني.")
-        generate_report_and_send()
+        return jsonify({"reply": "📄 تم استلام جميع البيانات. يتم الآن إنشاء التقرير...", "done": True})
 
-    return send_file(audio_path, mimetype="audio/mpeg")
-
-def generate_report_and_send():
-    doc = DocxTemplate("police_report_template.docx")
-    doc.render(user_session["fields"])
-    output_path = f"/tmp/final_report_{datetime.now().strftime('%Y%m%d_%H%M%S')}.docx"
-    doc.save(output_path)
-
-    # يمكن لاحقاً استخدام خدمة إرسال بريد مثل SendGrid أو SMTP هنا
-    print(f"📄 Report ready at: {output_path}")
 
 @app.route("/reset", methods=["POST"])
-def reset_session():
-    user_session["current_field_index"] = 0
+def reset():
+    user_session["current_field"] = "Date"
     user_session["fields"] = {}
-    return jsonify({"status": "reset"})
+    user_session["history"] = []
+    return jsonify({"reply": "🔄 تم إعادة ضبط الجلسة. لنبدأ من جديد.", "field": "Date"})
 
 
-if __name__ == "__main__":
-    app.run(debug=False, host="0.0.0.0", port=10000)
+@app.route("/audio", methods=["POST"])
+def generate_audio():
+    data = request.json
+    text = data.get("text", "")
+    path = speak(text)
+    with open(path, "rb") as f:
+        audio_data = f.read()
+    return audio_data, 200, {'Content-Type': 'audio/mpeg'}
