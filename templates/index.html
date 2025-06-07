@@ -1,36 +1,37 @@
 <!DOCTYPE html>
-<html lang="ar">
+<html lang="ar" dir="rtl">
 <head>
-  <meta charset="UTF-8" />
-  <title>مساعد إنشاء التقارير</title>
-  <script defer src="static/script.js"></script>
+  <meta charset="UTF-8">
+  <title>مساعد التقارير الصوتية</title>
   <style>
     body {
       font-family: 'Segoe UI', sans-serif;
-      direction: rtl;
-      text-align: right;
+      background-color: #f2f2f2;
       padding: 20px;
+      direction: rtl;
+    }
+    h1 {
+      color: #2c3e50;
     }
     button {
-      margin-top: 15px;
       padding: 10px 20px;
       font-size: 16px;
+      margin: 5px;
     }
-    #prompt {
-      margin-top: 30px;
-      font-size: 20px;
-      font-weight: bold;
-    }
-    #rephrased {
+    #result {
       margin-top: 20px;
-      color: green;
+      background-color: #fff;
+      padding: 10px;
+      border: 1px solid #ddd;
     }
   </style>
 </head>
 <body>
-  <h1>🎙️ مساعد إنشاء التقارير الهندسية</h1>
-  <p id="prompt">جاري التحميل...</p>
-  <button id="startBtn">🎤 اضغط للتحدث</button>
-  <p id="rephrased"></p>
+  <h1>🎙️ مساعد إعداد التقارير - قسم الهندسة الجنائية</h1>
+  <button id="startBtn">▶️ بدء التسجيل</button>
+  <button id="stopBtn">⏹️ إيقاف</button>
+  <div id="result"></div>
+
+  <script src="script.js"></script>
 </body>
 </html>
