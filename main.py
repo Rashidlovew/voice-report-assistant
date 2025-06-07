@@ -2,7 +2,7 @@ import os
 import tempfile
 import base64
 import ffmpeg
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from openai import OpenAI
 from elevenlabs import generate, Voice, VoiceSettings, set_api_key
@@ -81,7 +81,7 @@ def get_next_prompt(current_field):
         idx = fields.index(current_field)
         return fields[idx + 1] if idx + 1 < len(fields) else None
     except ValueError:
-        return fields[0]  # بداية
+        return fields[0]
 
 
 def speak_text(text):
@@ -101,7 +101,10 @@ def next_prompt():
     prompt = field_prompts[field]
     user_session["last_prompt"] = prompt
     audio = speak_text(prompt)
-    return jsonify({"prompt": prompt, "audio": base64.b64encode(audio).decode("utf-8")})
+    return jsonify({
+        "prompt": prompt,
+        "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
+    })
 
 
 @app.route("/speak", methods=["POST"])
@@ -111,23 +114,21 @@ def process_voice():
         audio_data.save(temp.name)
         temp_path = temp.name
 
-    # تحويل إلى نص
     transcript = transcribe_audio(temp_path)
     intent = detect_intent(transcript)
-
     current_field = user_session["current_field"]
 
     if intent == "redo":
         response = speak_text("🔁 حسنًا، كرر الإجابة من فضلك.")
-        return jsonify({"redo": True, "audio": base64.b64encode(response).decode("utf-8")})
+        return jsonify({"redo": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
 
     elif intent == "append":
         addition = rephrase_text(transcript)
         user_session["fields"][current_field] += " " + addition
         response = speak_text("📌 تمت إضافة المعلومة، هل ترغب في المتابعة؟")
-        return jsonify({"append": True, "audio": base64.b64encode(response).decode("utf-8")})
+        return jsonify({"append": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
 
-    elif intent == "approve" or intent == "unknown":
+    elif intent in ["approve", "unknown"]:
         refined = rephrase_text(transcript)
         user_session["fields"][current_field] = refined
 
@@ -137,37 +138,33 @@ def process_voice():
             prompt = field_prompts[next_field]
             user_session["last_prompt"] = prompt
             audio = speak_text(prompt)
-            return jsonify({"field_saved": True, "next_field": next_field, "audio": base64.b64encode(audio).decode("utf-8")})
+            return jsonify({
+                "field_saved": True,
+                "next_field": next_field,
+                "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
+            })
         else:
-            # تم الانتهاء
             create_report(user_session["fields"])
             response = speak_text("✅ تم إنشاء التقرير بنجاح وتم إرساله إلى البريد.")
-            return jsonify({"done": True, "audio": base64.b64encode(response).decode("utf-8")})
+            return jsonify({"done": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
 
     else:
         error_audio = speak_text("❗ لم أفهم، هل يمكنك التوضيح؟")
-        return jsonify({"error": True, "audio": base64.b64encode(error_audio).decode("utf-8")})
-
+        return jsonify({"error": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(error_audio).decode()}"})
 
 def create_report(fields):
     doc = DocxTemplate("police_report_template.docx")
     doc.render(fields)
     output_path = "/tmp/final_report.docx"
     doc.save(output_path)
-
-    # إرسال الإيميل (اختياري - placeholder فقط)
     send_email(output_path)
 
-
 def send_email(file_path):
-    # استخدم SMTP لإرسال التقرير
-    print(f"📤 Sending report from {file_path} to frnreports@gmail.com ... (mocked)")  # ضع هنا تنفيذ البريد الحقيقي عند الحاجة
-
+    print(f"📤 Sending report from {file_path} to frnreports@gmail.com ... (mocked)")
 
 @app.route("/")
 def index():
-    return "✅ Voice Assistant is running."
-
+    return render_template("index.html")
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
