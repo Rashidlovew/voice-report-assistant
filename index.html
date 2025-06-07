@@ -2,42 +2,34 @@
 <html lang="ar" dir="rtl">
 <head>
   <meta charset="UTF-8" />
-  <title>مساعد إعداد التقارير الصوتية</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>مساعد إعداد التقارير</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.rtl.min.css">
   <style>
     body {
-      font-family: 'Segoe UI', sans-serif;
-      background-color: #f8f8f8;
-      padding: 30px;
-      direction: rtl;
-      text-align: right;
+      background-color: #f8f9fa;
+      padding: 2rem;
+      font-family: 'Tahoma', sans-serif;
     }
-
-    h1 {
-      color: #333;
+    #response {
+      white-space: pre-line;
+      margin-top: 1rem;
     }
-
-    button {
-      padding: 10px 20px;
-      font-size: 16px;
-      margin-top: 10px;
-    }
-
-    #result {
-      margin-top: 20px;
-      padding: 15px;
-      background: #ffffff;
-      border: 1px solid #ccc;
+    .btn-group {
+      margin-top: 1rem;
     }
   </style>
 </head>
 <body>
-  <h1>🎙️ مساعد إعداد التقارير - قسم الهندسة الجنائية</h1>
-  <button id="startBtn">▶️ بدء التسجيل</button>
-  <button id="stopBtn">⏹️ إيقاف</button>
+  <div class="container text-end">
+    <h1 class="mb-4">🎙️ مساعد إعداد التقارير</h1>
+    <p id="response">جاري التحميل...</p>
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="startRecording()">🎤 تحدث الآن</button>
+      <button class="btn btn-secondary" onclick="location.reload()">🔄 إعادة</button>
+    </div>
+  </div>
 
-  <div id="result"></div>
-
-  <!-- ✅ المسار الصحيح للسكربت -->
   <script src="static/script.js"></script>
 </body>
 </html>
