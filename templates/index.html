@@ -4,16 +4,28 @@
     <meta charset="UTF-8" />
     <title>مساعد التقرير الصوتي</title>
     <style>
-        body { font-family: Arial; background: #f7f7f7; text-align: center; padding: 30px; }
-        h1 { font-size: 24px; margin-bottom: 20px; }
-        button { padding: 10px 20px; font-size: 18px; }
-        .status, .text-block { margin: 20px 0; }
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #f0f0f0;
+            text-align: center;
+            padding: 40px;
+        }
+        h1 { font-size: 26px; }
+        button {
+            font-size: 18px;
+            padding: 12px 20px;
+            margin: 20px 0;
+        }
+        .status, .text-block {
+            margin: 15px 0;
+            font-size: 16px;
+        }
     </style>
 </head>
 <body>
-    <h1>🎤 مساعد إعداد التقارير</h1>
+    <h1>🎤 مساعد إعداد التقارير الفنية</h1>
     <button onclick="startAssistant()">ابدأ الآن</button>
-    <div class="status" id="status">جاهز</div>
+    <div class="status" id="status">🟢 جاهز للاستماع</div>
     <div class="text-block">📄 التفريغ: <span id="transcriptionText"></span></div>
     <div class="text-block">💬 المساعد: <span id="responseText"></span></div>
     <audio id="audioPlayer" controls style="display:none;"></audio>
