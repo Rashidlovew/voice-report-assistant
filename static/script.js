@@ -1,66 +1,71 @@
-let mediaRecorder;
-let audioChunks = [];
-let currentField = "";
-const startBtn = document.getElementById("startBtn");
-const promptText = document.getElementById("prompt");
-const rephrasedText = document.getElementById("rephrased");
+let currentField = "Date";
 
-window.onload = async () => {
-  const res = await fetch("/start");
+async function fetchPrompt() {
+  const res = await fetch("/next");
   const data = await res.json();
-  currentField = data.nextField;
-  promptText.innerText = data.prompt;
-};
+  if (data.done) {
+    speak("✅ تم الانتهاء من جميع الحقول. شكراً لك.");
+    return;
+  }
+  currentField = data.field;
+  speak(data.prompt);
+}
 
-startBtn.onclick = async () => {
-  startBtn.disabled = true;
-  rephrasedText.innerText = "🔊 جاري التسجيل...";
+async function speak(text) {
+  const res = await fetch("/speak", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  const audioBlob = await res.blob();
+  const audioUrl = URL.createObjectURL(audioBlob);
+  const audio = new Audio(audioUrl);
+  audio.play();
+}
 
+async function sendAudio(base64Audio) {
+  const res = await fetch("/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ audio: base64Audio, field: currentField }),
+  });
+  const data = await res.json();
+  if (data.text) {
+    document.getElementById("result").innerHTML += `<p><b>${currentField}:</b> ${data.text}</p>`;
+    fetchPrompt();
+  } else {
+    speak("حدث خطأ، حاول مرة أخرى.");
+  }
+}
+
+let mediaRecorder;
+let chunks = [];
+
+document.getElementById("startBtn").onclick = async () => {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
   mediaRecorder = new MediaRecorder(stream);
-  audioChunks = [];
 
-  mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) audioChunks.push(event.data);
+  mediaRecorder.ondataavailable = (e) => {
+    chunks.push(e.data);
   };
 
-  mediaRecorder.onstop = async () => {
-    const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(chunks, { type: "audio/webm" });
     const reader = new FileReader();
-    reader.onloadend = async () => {
-      const base64data = reader.result;
-      const res = await fetch("/upload", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio: base64data }),
-      });
-      const result = await res.json();
-
-      if (result.done) {
-        promptText.innerText = "✅ جاري إنشاء التقرير...";
-        await fetch("/generate-report");
-        rephrasedText.innerText = "📩 تم إرسال التقرير إلى البريد.";
-        return;
-      }
-
-      currentField = result.nextField;
-      promptText.innerText = result.prompt;
-      rephrasedText.innerText = `✍️ إعادة الصياغة:\n${result.rephrased}`;
-
-      // تشغيل الرد الصوتي
-      const audioRes = await fetch("/stream-audio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: result.rephrased }),
-      });
-      const audioBlob = await audioRes.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(audioUrl);
-      audio.play();
+    reader.onloadend = () => {
+      sendAudio(reader.result);
     };
-    reader.readAsDataURL(audioBlob);
+    reader.readAsDataURL(blob);
+    chunks = [];
   };
 
   mediaRecorder.start();
-  setTimeout(() => mediaRecorder.stop(), 6000);
+  speak("🎤 التسجيل بدأ الآن...");
 };
+
+document.getElementById("stopBtn").onclick = () => {
+  mediaRecorder.stop();
+  speak("⏹️ تم إيقاف التسجيل.");
+};
+
+window.onload = fetchPrompt;
