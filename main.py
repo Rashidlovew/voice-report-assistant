@@ -52,13 +52,16 @@ def stream_audio():
 def submit_audio():
     user_id = request.remote_addr
     if user_id not in sessions:
-        sessions[user_id] = {"step": 0, "data": {}, "last_field": None}
+        sessions[user_id] = {"step": 0, "data": {}}
 
     data = request.json
     audio_data = data.get("audio")
 
     if not audio_data:
-        field = field_order[sessions[user_id]["step"]]
+        step = sessions[user_id]["step"]
+        if step >= len(field_order):
+            return jsonify({"response": "📄 تم جمع جميع البيانات."})
+        field = field_order[step]
         prompt = generate_prompt(field)
         return jsonify({"response": prompt, "action": "prompt"})
 
@@ -81,16 +84,16 @@ def submit_audio():
     if intent == "redo":
         return jsonify({
             "transcript": transcript,
-            "response": f"🔁 حسنًا، أعد {field_names_ar[field]} من فضلك.",
+            "response": f"🔁 أعد إرسال {field_names_ar[field]} من فضلك.",
             "action": "redo"
         })
 
     elif intent == "restart":
-        sessions[user_id] = {"step": 0, "data": {}, "last_field": None}
+        sessions[user_id] = {"step": 0, "data": {}}
         prompt = generate_prompt("Date")
         return jsonify({
             "transcript": transcript,
-            "response": "🔄 تم إعادة البدء. " + prompt,
+            "response": "🔄 تم إعادة البدء.\n" + prompt,
             "action": "restart"
         })
 
@@ -101,17 +104,13 @@ def submit_audio():
             prompt = generate_prompt(target)
             return jsonify({
                 "transcript": transcript,
-                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n" + prompt,
+                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n{prompt}",
                 "action": "jump"
             })
 
-    # Append to previous value if exists
-    prev_text = sessions[user_id]["data"].get(field, "")
-    sessions[user_id]["data"][field] = prev_text + " " + transcript if prev_text else transcript
-
-    # ✅ تأكيد صياغي + الانتقال خطوة واحدة فقط إذا لم تكن مكررة
-    sessions[user_id]["last_field"] = field
-    confirm = confirm_reply(field, sessions[user_id]["data"][field])
+    # Append only, no re-confirmation to keep flow fast
+    prev = sessions[user_id]["data"].get(field, "")
+    sessions[user_id]["data"][field] = prev + " " + transcript if prev else transcript
     sessions[user_id]["step"] += 1
 
     if sessions[user_id]["step"] >= len(field_order):
@@ -120,17 +119,17 @@ def submit_audio():
         del sessions[user_id]
         return jsonify({
             "transcript": transcript,
-            "response": confirm + "\n📩 تم إرسال التقرير عبر البريد الإلكتروني. شكرًا لتعاونك.",
+            "response": "📩 تم إرسال التقرير الفني عبر البريد الإلكتروني. شكرًا لتعاونك.",
             "action": "done"
         })
-    else:
-        next_field = field_order[sessions[user_id]["step"]]
-        prompt = generate_prompt(next_field)
-        return jsonify({
-            "transcript": transcript,
-            "response": confirm + "\n" + prompt,
-            "action": "next"
-        })
+
+    next_field = field_order[sessions[user_id]["step"]]
+    prompt = generate_prompt(next_field)
+    return jsonify({
+        "transcript": transcript,
+        "response": prompt,
+        "action": "next"
+    })
 
 def transcribe_audio(file):
     result = client.audio.transcriptions.create(
@@ -143,8 +142,8 @@ def transcribe_audio(file):
 
 def detect_intent(text):
     prompt = f"""
-حلل نية المستخدم من العبارة: "{text}"
-اختر فقط من:
+حلل نية المستخدم من الجملة: "{text}"
+الخيارات:
 - approve
 - redo
 - restart
@@ -158,19 +157,7 @@ def detect_intent(text):
     return res.choices[0].message.content.strip()
 
 def generate_prompt(field):
-    prompt = f"اكتب جملة رسمية مؤنثة باللغة العربية تطلب من المستخدم تزويدك بـ {field_names_ar[field]}"
-    res = client.chat.completions.create(
-        model="gpt-4o",
-        messages=[{"role": "user", "content": prompt}]
-    )
-    return res.choices[0].message.content.strip()
-
-def confirm_reply(field, text):
-    prompt = f"""
-أعد صياغة التالي بأسلوب رسمي مهذب باللغة العربية كمساعد صوتي:
-"{text}"
-ثم أضف تأكيدًا أنك استلمت {field_names_ar[field]}.
-"""
+    prompt = f"اكتب بصيغة رسمية مؤنثة باللغة العربية تطلب من المستخدم تزويدك بـ {field_names_ar[field]}"
     res = client.chat.completions.create(
         model="gpt-4o",
         messages=[{"role": "user", "content": prompt}]
@@ -198,7 +185,7 @@ def send_email(to, file_path):
     msg["Subject"] = "📄 التقرير الفني"
     msg["From"] = EMAIL_ADDRESS
     msg["To"] = to
-    msg.set_content("تم تجهيز التقرير الفني بناءً على البيانات المدخلة.")
+    msg.set_content("تم تجهيز التقرير الفني بناءً على المعلومات المدخلة.")
     with open(file_path, "rb") as f:
         msg.add_attachment(f.read(), maintype="application", subtype="vnd.openxmlformats-officedocument.wordprocessingml.document", filename=os.path.basename(file_path))
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
