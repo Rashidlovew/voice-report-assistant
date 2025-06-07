@@ -8,14 +8,19 @@ const transcriptionText = document.getElementById("transcriptionText");
 const responseText = document.getElementById("responseText");
 
 let silenceTimeoutTriggered = false;
+let silenceCheckInterval;
 
 async function startAssistant() {
-    statusText.innerText = "🎧 المساعد جاهز...";
+    statusText.innerText = "🎧 جاري التحميل...";
+    const greetingText = "مرحباً بك في مساعد إنشاء التقارير الخاص بقسم الهندسة الجنائية";
+    await playAudioStream(greetingText);
+    
     const response = await fetch("/submitAudio", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ audio: null })
     });
+
     const result = await response.json();
     responseText.innerText = result.response;
     await playAudioStream(result.response);
@@ -34,6 +39,7 @@ async function playAudioStream(text) {
 
 async function startRecording() {
     if (isRecording) return;
+
     audioStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     mediaRecorder = new MediaRecorder(audioStream);
     audioChunks = [];
@@ -56,10 +62,12 @@ async function startRecording() {
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ audio: base64Audio })
             });
+
             const result = await response.json();
             transcriptionText.innerText = result.transcript;
             responseText.innerText = result.response;
             await playAudioStream(result.response);
+
             if (result.action !== "done") {
                 startRecording();
             } else {
@@ -72,7 +80,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     statusText.innerText = "🎤 جاري الاستماع...";
-    detectSilence(audioStream, stopRecording, 3000, 5);  // ⏱️ مهلة صمت = 3 ثواني
+    detectAdaptiveSilence(audioStream, stopRecording, 4000, 5);
 }
 
 function stopRecording() {
@@ -85,7 +93,7 @@ function stopRecording() {
     statusText.innerText = "⏸️ توقف التسجيل مؤقتاً.";
 }
 
-function detectSilence(stream, onSilence, silenceDelay = 3000, threshold = 5) {
+function detectAdaptiveSilence(stream, onSilence, silenceDelay = 4000, threshold = 5) {
     const context = new AudioContext();
     const analyser = context.createAnalyser();
     const mic = context.createMediaStreamSource(stream);
@@ -96,11 +104,14 @@ function detectSilence(stream, onSilence, silenceDelay = 3000, threshold = 5) {
     processor.connect(context.destination);
 
     let lastSound = Date.now();
+
     processor.onaudioprocess = () => {
         const data = new Uint8Array(analyser.fftSize);
         analyser.getByteTimeDomainData(data);
         const rms = Math.sqrt(data.reduce((a, b) => a + Math.pow((b - 128) / 128, 2), 0) / data.length);
-        if (rms * 100 > threshold) lastSound = Date.now();
+        if (rms * 100 > threshold) {
+            lastSound = Date.now();
+        }
         if (Date.now() - lastSound > silenceDelay && isRecording) {
             silenceTimeoutTriggered = true;
             onSilence();
