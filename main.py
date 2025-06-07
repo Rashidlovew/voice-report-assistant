@@ -17,7 +17,6 @@ client = OpenAI(api_key=OPENAI_API_KEY)
 app = Flask(__name__)
 CORS(app)
 
-# === Fields ===
 field_order = [
     "Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"
 ]
@@ -53,14 +52,22 @@ def stream_audio():
 def submit_audio():
     user_id = request.remote_addr
     if user_id not in sessions:
-        sessions[user_id] = {"step": 0, "data": {}}
+        sessions[user_id] = {"step": 0, "data": {}, "pending_confirmation": False}
 
-    audio_data = request.json.get("audio")
+    data = request.json
+    audio_data = data.get("audio")
+    append_to = data.get("append_to", None)
+
+    if not audio_data:
+        field = field_order[sessions[user_id]["step"]]
+        prompt = generate_prompt(field)
+        return jsonify({"response": prompt, "action": "prompt"})
+
     audio_bytes = base64.b64decode(audio_data.split(",")[1])
     audio_file = io.BytesIO(audio_bytes)
     audio_file.name = "audio.webm"
-
     transcript = transcribe_audio(audio_file)
+
     step = sessions[user_id]["step"]
     field = field_order[step]
     intent = detect_intent(transcript)
@@ -71,27 +78,30 @@ def submit_audio():
             "response": f"🔁 حسنًا، أعد {field_names_ar[field]} من فضلك.",
             "action": "redo"
         })
+
     elif intent == "restart":
-        sessions[user_id] = {"step": 0, "data": {}}
-        prompt = generate_prompt("Date")
+        sessions[user_id] = {"step": 0, "data": {}, "pending_confirmation": False}
         return jsonify({
             "transcript": transcript,
-            "response": f"🔄 تم إعادة البدء. {prompt}",
+            "response": "🔄 تم إعادة البدء. " + generate_prompt("Date"),
             "action": "restart"
         })
+
     elif intent.startswith("field:"):
         target = intent.split(":")[1]
         if target in field_order:
             sessions[user_id]["step"] = field_order.index(target)
-            prompt = generate_prompt(target)
             return jsonify({
                 "transcript": transcript,
-                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n{prompt}",
+                "response": f"↩️ نعود إلى {field_names_ar[target]}.\n" + generate_prompt(target),
                 "action": "jump"
             })
 
-    sessions[user_id]["data"][field] = transcript
-    confirm = confirm_reply(field, transcript)
+    # Append instead of overwrite
+    previous = sessions[user_id]["data"].get(field, "")
+    sessions[user_id]["data"][field] = previous + " " + transcript if previous else transcript
+
+    reply = confirm_reply(field, sessions[user_id]["data"][field])
     sessions[user_id]["step"] += 1
 
     if sessions[user_id]["step"] >= len(field_order):
@@ -100,15 +110,14 @@ def submit_audio():
         del sessions[user_id]
         return jsonify({
             "transcript": transcript,
-            "response": confirm + "\n📩 تم إرسال التقرير عبر البريد الإلكتروني. شكرًا لك.",
+            "response": reply + "\n📩 تم إرسال التقرير عبر البريد الإلكتروني. شكرًا لتعاونك.",
             "action": "done"
         })
     else:
         next_field = field_order[sessions[user_id]["step"]]
-        next_prompt = generate_prompt(next_field)
         return jsonify({
             "transcript": transcript,
-            "response": confirm + "\n" + next_prompt,
+            "response": reply + "\n" + generate_prompt(next_field),
             "action": "next"
         })
 
