@@ -1,41 +1,50 @@
 <!DOCTYPE html>
-<html lang="ar" dir="rtl">
+<html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>مساعد التقارير الصوتي</title>
-  <style>
-    body {
-      font-family: 'Dubai', sans-serif;
-      text-align: right;
-      padding: 30px;
-      background-color: #f9f9f9;
-    }
-    #log {
-      margin-top: 20px;
-      padding: 15px;
-      background-color: #fff;
-      border: 1px solid #ccc;
-      height: 300px;
-      overflow-y: auto;
-    }
-    button {
-      font-size: 18px;
-      padding: 10px 20px;
-      margin: 5px;
-    }
-    #field-buttons {
-      margin-top: 15px;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <title>🎙️ Voice Report Assistant</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            padding: 20px;
+        }
+
+        #micIcon {
+            display: none;
+            font-size: 30px;
+            color: red;
+            margin-left: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+        }
+
+        #fieldButtons button {
+            margin: 5px;
+        }
+    </style>
 </head>
 <body>
-  <h1>👮‍♀️ مساعد التقارير الصوتي</h1>
-  <p>اضغط على الزر لبدء المحادثة 👇</p>
-  <button id="startButton">🎙️ ابدأ المحادثة</button>
+    <h2>🧠 Voice Report Assistant</h2>
+    <button id="startBtn">🎙️ Start Assistant</button>
+    <span id="micIcon">🎤</span>
 
-  <div id="field-buttons"></div>
-  <div id="log"></div>
+    <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
+    <p><strong>Response:</strong> <span id="responseText"></span></p>
+    <audio id="audioPlayer" controls></audio>
 
-  <script src="/static/script.js"></script>
+    <h3>📝 Edit Specific Field (Optional)</h3>
+    <div id="fieldButtons">
+        <button onclick="goToField('Date')">التاريخ</button>
+        <button onclick="goToField('Briefing')">موجز الواقعة</button>
+        <button onclick="goToField('LocationObservations')">معاينة الموقع</button>
+        <button onclick="goToField('Examination')">نتيجة الفحص الفني</button>
+        <button onclick="goToField('Outcomes')">النتيجة</button>
+        <button onclick="goToField('TechincalOpinion')">الرأي الفني</button>
+    </div>
+
+    <script src="/static/script.js"></script>
 </body>
 </html>
