@@ -3,24 +3,20 @@ import base64
 import tempfile
 from flask import Flask, request, jsonify, send_file, Response, render_template
 from flask_cors import CORS
-from openai import OpenAI
-from elevenlabs.client import ElevenLabs
 from docx import Document
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
+import openai
 
 # === Load environment variables ===
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
 
-client = OpenAI(api_key=OPENAI_API_KEY)
-eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
-VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
+openai.api_key = OPENAI_API_KEY
 
 app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
@@ -65,8 +61,7 @@ def handle_audio():
         temp_filename = f.name
 
     with open(temp_filename, "rb") as audio_file:
-        # FIX: pass full tuple for OpenAI to detect mime type correctly
-        transcript = client.audio.transcriptions.create(
+        transcript = openai.audio.transcriptions.create(
             model="whisper-1",
             file=("audio.webm", audio_file, "audio/webm"),
             response_format="text",
@@ -138,18 +133,18 @@ def send_email_with_attachment(file_path):
 
 @app.route("/stream-audio")
 def stream_audio():
-    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
-    audio_stream = eleven.text_to_speech.stream(
-        text=text,
-        voice_id=VOICE_ID,
-        model_id="eleven_monolingual_v1"
+    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك؟")
+    response = openai.audio.speech.create(
+        model="tts-1",
+        voice="nova",
+        input=text
     )
 
-    def generate_stream():
-        for chunk in audio_stream:
-            yield chunk
+    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
+    temp_file.write(response.content)
+    temp_file.flush()
 
-    return Response(generate_stream(), content_type="audio/mpeg")
+    return send_file(temp_file.name, mimetype="audio/mpeg")
 
 
 @app.route("/")
