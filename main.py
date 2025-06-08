@@ -1,200 +1,193 @@
-import os
-import base64
-import tempfile
-from flask import Flask, request, jsonify, send_file, render_template
-from flask_cors import CORS
-from docx import Document
-import smtplib
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.mime.text import MIMEText
-import openai
-import re
+// ✅ script.js - Final version with status indicators and bug fixes
 
-# === Load environment variables ===
-EMAIL_SENDER = os.getenv("EMAIL_SENDER")
-EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
-EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+let isRecording = false;
+let mediaRecorder;
+let audioChunks = [];
+let currentField = "";
+let fieldQueue = ["Date", "Briefing", "LocationObservations", "Examination", "Outcomes", "TechincalOpinion"];
+let fieldIndex = 0;
 
-openai.api_key = OPENAI_API_KEY
+const startBtn = document.getElementById("startBtn");
+const audioPlayer = document.getElementById("audioPlayer");
+const transcriptionText = document.getElementById("transcriptionText");
+const responseText = document.getElementById("responseText");
+const micIcon = document.getElementById("micIcon");
+const fieldButtons = document.getElementById("fieldButtons");
+const statusDiv = document.createElement("div");
+statusDiv.style.marginTop = "10px";
+document.body.insertBefore(statusDiv, fieldButtons);
 
-app = Flask(__name__, static_folder="static", template_folder="templates")
-CORS(app)
+startBtn.addEventListener("click", () => {
+    greetUser();
+});
 
-report_fields = [
-    "Date",
-    "Briefing",
-    "LocationObservations",
-    "Examination",
-    "Outcomes",
-    "TechincalOpinion"
-]
-
-field_prompts = {
-    "Date": "🎙️ أرسل تاريخ الواقعة.",
-    "Briefing": "🎙️ أرسل موجز الواقعة.",
-    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
-    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
-    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
-    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
+function greetUser() {
+    const welcome = "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.";
+    playAudioStream(welcome).then(() => {
+        fieldIndex = 0;
+        startAssistant();
+    });
 }
 
-field_names_ar = {
-    "Date": "التاريخ",
-    "Briefing": "موجز الواقعة",
-    "LocationObservations": "معاينة الموقع",
-    "Examination": "نتيجة الفحص الفني",
-    "Outcomes": "النتيجة",
-    "TechincalOpinion": "الرأي الفني"
+function updateStatus(text) {
+    statusDiv.textContent = text;
 }
 
-user_sessions = {}
+function showMicIcon(show) {
+    micIcon.style.display = show ? "inline-block" : "none";
+}
 
-@app.route("/submitAudio", methods=["POST"])
-def handle_audio():
-    data = request.json
-    base64_audio = data["audio"].split(",")[-1]
-    audio_data = base64.b64decode(base64_audio)
+async function playAudioStream(text) {
+    return new Promise((resolve) => {
+        updateStatus("🔊 يتحدث...");
+        audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
+        audioPlayer.play();
+        audioPlayer.addEventListener("ended", function handler() {
+            audioPlayer.removeEventListener("ended", handler);
+            updateStatus("🎤 في انتظار الصوت...");
+            resolve();
+        });
+    });
+}
 
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
-        f.write(audio_data)
-        temp_filename = f.name
+async function startAssistant() {
+    currentField = fieldQueue[fieldIndex];
+    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`).textContent;
+    const promptText = `🎙️ أرسل ${arabicLabel} من فضلك.`;
+    await playAudioStream(promptText);
+    await startRecording();
 
-    with open(temp_filename, "rb") as audio_file:
-        transcript = openai.audio.transcriptions.create(
-            model="whisper-1",
-            file=("audio.webm", audio_file, "audio/webm"),
-            response_format="text",
-            language="ar"
-        )
+    setTimeout(() => {
+        if (isRecording) stopRecording();
+    }, 30000);
+}
 
-    user_id = "default"
-    session = user_sessions.setdefault(user_id, {"step": 0, "data": {}})
-    step = session["step"]
+async function startRecording() {
+    if (isRecording) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaRecorder = new MediaRecorder(stream);
+    audioChunks = [];
 
-    if step >= len(report_fields):
-        return jsonify({"response": "تم الانتهاء من جميع المدخلات.", "transcript": transcript})
+    mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) audioChunks.push(event.data);
+    };
 
-    field = report_fields[step]
+    mediaRecorder.onstop = async () => {
+        showMicIcon(false);
+        updateStatus("🔁 معالجة...");
 
-    if field == "Date":
-        # Try to extract only the date from the transcript
-        date_match = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})", transcript)
-        session["data"][field] = date_match.group(0) if date_match else transcript
-    else:
-        session["data"][field] = transcript
+        const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+            const base64Audio = reader.result;
+            const response = await fetch("/submitAudio", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ audio: base64Audio })
+            });
+            const result = await response.json();
+            transcriptionText.textContent = result.transcript || "";
+            responseText.textContent = result.response || "";
 
-    session["step"] += 1
+            const intentResponse = await fetch("/analyze-intent", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ message: result.transcript })
+            });
+            const intentResult = await intentResponse.json();
 
-    if session["step"] < len(report_fields):
-        next_prompt = field_prompts[report_fields[session["step"]]]
-    else:
-        next_prompt = "📄 يتم الآن تجهيز التقرير النهائي..."
+            if (intentResult.intent === "approve") {
+                fieldIndex++;
+            } else if (intentResult.intent === "redo") {
+                // stay on same field
+            } else if (intentResult.intent === "restart") {
+                fieldIndex = 0;
+            } else if (intentResult.intent === "fieldCorrection") {
+                const target = fieldQueue.indexOf(intentResult.field);
+                if (target !== -1) fieldIndex = target;
+            }
 
-    if session["step"] == len(report_fields):
-        file_path = generate_report(user_id)
-        send_email_with_attachment(file_path)
-        response = "✅ تم إرسال التقرير عبر البريد الإلكتروني. شكراً لك!"
-    else:
-        response = next_prompt
+            if (fieldIndex < fieldQueue.length) {
+                startAssistant();
+            } else {
+                updateStatus("✅ تم الانتهاء من جميع المدخلات.");
+                playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
+            }
+        };
+        reader.readAsDataURL(audioBlob);
+    };
 
-    return jsonify({"transcript": transcript, "response": response})
+    mediaRecorder.start();
+    isRecording = true;
+    showMicIcon(true);
+    updateStatus("🎙️ تسجيل الصوت...");
+    detectSilence(stream, stopRecording, 6000, 5);
+}
 
+function stopRecording() {
+    if (!isRecording) return;
+    isRecording = false;
+    mediaRecorder.stop();
+    showMicIcon(false);
+    updateStatus("🛑 تم إيقاف التسجيل");
+}
 
-@app.route("/analyze-intent", methods=["POST"])
-def analyze_intent():
-    data = request.get_json()
-    message = data.get("message", "")
+function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    const microphone = audioContext.createMediaStreamSource(stream);
+    const scriptProcessor = audioContext.createScriptProcessor(2048, 1, 1);
 
-    prompt = f"""
-المستخدم قال: "{message}"
+    analyser.smoothingTimeConstant = 0.8;
+    analyser.fftSize = 2048;
+    microphone.connect(analyser);
+    analyser.connect(scriptProcessor);
+    scriptProcessor.connect(audioContext.destination);
 
-حدد نيته بناءً على الجملة:
-- إذا كان يوافق على الاستمرار، أجب فقط: approve
-- إذا كان يريد إعادة الإدخال، أجب فقط: redo
-- إذا كان يريد بدء من جديد، أجب فقط: restart
-- إذا كان يريد تعديل حقل معين، أجب بصيغة: fieldCorrection:FIELD_KEY
+    let lastSoundTime = Date.now();
+    scriptProcessor.onaudioprocess = function () {
+        const array = new Uint8Array(analyser.fftSize);
+        analyser.getByteTimeDomainData(array);
+        let sum = 0;
+        for (let i = 0; i < array.length; i++) {
+            const value = (array[i] - 128) / 128;
+            sum += value * value;
+        }
+        const rms = Math.sqrt(sum / array.length);
+        const volume = rms * 100;
+        if (volume > threshold) lastSoundTime = Date.now();
+        if (Date.now() - lastSoundTime > silenceDelay && isRecording) {
+            onSilence();
+            microphone.disconnect();
+            scriptProcessor.disconnect();
+            audioContext.close();
+        }
+    };
+}
 
-FIELD_KEY يجب أن يكون أحد هذه: Date, Briefing, LocationObservations, Examination, Outcomes, TechincalOpinion
-"""
-
-    response = openai.chat.completions.create(
-        model="gpt-4",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.2
-    )
-
-    reply = response.choices[0].message.content.strip()
-
-    if reply.startswith("fieldCorrection:"):
-        field_key = reply.split(":")[1]
-        return jsonify({"intent": "fieldCorrection", "field": field_key})
-    elif reply == "redo":
-        return jsonify({"intent": "redo"})
-    elif reply == "restart":
-        return jsonify({"intent": "restart"})
-    else:
-        return jsonify({"intent": "approve"})
-
-
-def generate_report(user_id):
-    session = user_sessions[user_id]
-    data = session["data"]
-
-    doc = Document("police_report_template.docx")
-    for p in doc.paragraphs:
-        for key in report_fields:
-            if f"{{{{{key}}}}}" in p.text:
-                inline = p.runs
-                for i in range(len(inline)):
-                    if f"{{{{{key}}}}}" in inline[i].text:
-                        inline[i].text = inline[i].text.replace(f"{{{{{key}}}}}", data.get(key, ""))
-
-    output_path = f"report_{user_id}.docx"
-    doc.save(output_path)
-    return output_path
-
-
-def send_email_with_attachment(file_path):
-    msg = MIMEMultipart()
-    msg["From"] = EMAIL_SENDER
-    msg["To"] = EMAIL_RECEIVER
-    msg["Subject"] = "📄 Police Report Submission"
-
-    body = MIMEText("Attached is the completed police report.", "plain")
-    msg.attach(body)
-
-    with open(file_path, "rb") as f:
-        part = MIMEApplication(f.read(), Name=os.path.basename(file_path))
-        part["Content-Disposition"] = f'attachment; filename="{os.path.basename(file_path)}"'
-        msg.attach(part)
-
-    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
-        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-        server.send_message(msg)
-
-
-@app.route("/stream-audio")
-def stream_audio():
-    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك؟")
-    response = openai.audio.speech.create(
-        model="tts-1",
-        voice="nova",
-        input=text
-    )
-
-    temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
-    temp_file.write(response.content)
-    temp_file.flush()
-
-    return send_file(temp_file.name, mimetype="audio/mpeg")
-
-
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+function renderFieldButtons() {
+    fieldButtons.innerHTML = ""; // Prevent duplicates
+    const arabicLabels = {
+        Date: "التاريخ",
+        Briefing: "موجز الواقعة",
+        LocationObservations: "معاينة الموقع",
+        Examination: "نتيجة الفحص الفني",
+        Outcomes: "النتيجة",
+        TechincalOpinion: "الرأي الفني"
+    };
+    fieldQueue.forEach(field => {
+        const btn = document.createElement("button");
+        btn.textContent = arabicLabels[field];
+        btn.className = "field-btn";
+        btn.setAttribute("data-field", field);
+        btn.onclick = () => {
+            const target = fieldQueue.indexOf(field);
+            if (target !== -1) {
+                fieldIndex = target;
+                startAssistant();
+            }
+        };
+        fieldButtons.appendChild(btn);
+    });
+}
+renderFieldButtons();
