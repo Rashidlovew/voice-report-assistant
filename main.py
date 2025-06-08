@@ -1,170 +1,161 @@
 import os
-import tempfile
 import base64
-import ffmpeg
-from flask import Flask, request, jsonify, render_template
+import tempfile
+from flask import Flask, request, jsonify, send_file, Response, render_template
 from flask_cors import CORS
 from openai import OpenAI
-from elevenlabs import generate, Voice, VoiceSettings, set_api_key
-from docxtpl import DocxTemplate
+from elevenlabs.client import ElevenLabs
+from docx import Document
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email.mime.text import MIMEText
 
-# إعداد Flask
-app = Flask(__name__)
+# === Load environment variables ===
+EMAIL_SENDER = os.getenv("EMAIL_SENDER")
+EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
+EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+
+client = OpenAI(api_key=OPENAI_API_KEY)
+eleven = ElevenLabs(api_key=ELEVENLABS_API_KEY)
+VOICE_ID = "VwC51uc4PUblWEJSPzeo"  # Arabic female voice
+
+app = Flask(__name__, static_folder="static", template_folder="templates")
 CORS(app)
 
-# مفاتيح API
-openai_key = os.getenv("OPENAI_API_KEY")
-eleven_key = os.getenv("ELEVENLABS_API_KEY")
-set_api_key(eleven_key)
-client = OpenAI(api_key=openai_key)
+report_fields = [
+    "Date",
+    "Briefing",
+    "LocationObservations",
+    "Examination",
+    "Outcomes",
+    "TechincalOpinion"
+]
 
-# الجلسة
-user_session = {
-    "current_field": None,
-    "fields": {},
-    "last_prompt": "",
-}
-
-# الحقول وتعريفاتها
 field_prompts = {
-    "Date": "🎙️ ما هو تاريخ الواقعة؟",
-    "Briefing": "🎙️ أخبرني بموجز الواقعة.",
-    "LocationObservations": "🎙️ ماذا لاحظت عند معاينة موقع الحادث؟",
-    "Examination": "🎙️ ما نتيجة الفحص الفني؟",
-    "Outcomes": "🎙️ ما هي النتيجة النهائية بعد الفحص؟",
-    "TechincalOpinion": "🎙️ ما هو رأيك الفني النهائي؟"
+    "Date": "🎙️ أرسل تاريخ الواقعة.",
+    "Briefing": "🎙️ أرسل موجز الواقعة.",
+    "LocationObservations": "🎙️ أرسل معاينة الموقع حيث بمعاينة موقع الحادث تبين ما يلي .....",
+    "Examination": "🎙️ أرسل نتيجة الفحص الفني ... حيث بفحص موضوع الحادث تبين ما يلي .....",
+    "Outcomes": "🎙️ أرسل النتيجة حيث أنه بعد المعاينة و أجراء الفحوص الفنية اللازمة تبين ما يلي:.",
+    "TechincalOpinion": "🎙️ أرسل الرأي الفني."
 }
 
 field_names_ar = {
     "Date": "التاريخ",
     "Briefing": "موجز الواقعة",
     "LocationObservations": "معاينة الموقع",
-    "Examination": "نتيجة الفحص",
+    "Examination": "نتيجة الفحص الفني",
     "Outcomes": "النتيجة",
     "TechincalOpinion": "الرأي الفني"
 }
 
+user_sessions = {}
 
-def transcribe_audio(file_path):
-    mp3_path = tempfile.mktemp(suffix=".mp3")
-    ffmpeg.input(file_path).output(mp3_path).run(overwrite_output=True)
-    with open(mp3_path, "rb") as f:
-        transcript = client.audio.transcriptions.create(model="whisper-1", file=f)
-    return transcript.text.strip()
+@app.route("/submitAudio", methods=["POST"])
+def handle_audio():
+    data = request.json
+    base64_audio = data["audio"].split(",")[-1]
+    audio_data = base64.b64decode(base64_audio)
 
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".webm") as f:
+        f.write(audio_data)
+        temp_filename = f.name
 
-def rephrase_text(text):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "أعد صياغة هذا الكلام بأسلوب رسمي لتقرير فني للشرطة باللغة العربية:"},
-            {"role": "user", "content": text}
-        ]
-    )
-    return response.choices[0].message.content.strip()
+    with open(temp_filename, "rb") as audio_file:
+        # FIX: pass full tuple for OpenAI to detect mime type correctly
+        transcript = client.audio.transcriptions.create(
+            model="whisper-1",
+            file=("audio.webm", audio_file, "audio/webm"),
+            response_format="text",
+            language="ar"
+        )
 
+    user_id = "default"
+    session = user_sessions.setdefault(user_id, {"step": 0, "data": {}})
+    step = session["step"]
 
-def detect_intent(text):
-    response = client.chat.completions.create(
-        model="gpt-4",
-        messages=[
-            {"role": "system", "content": "مهمتك أن تحدد نية المتحدث بدقة. اختر فقط واحدة من: 'approve' للموافقة، 'redo' للإعادة، 'append' للإضافة أو 'unknown' إن لم تفهم."},
-            {"role": "user", "content": f"الرد: {text}"}
-        ]
-    )
-    return response.choices[0].message.content.strip()
+    if step >= len(report_fields):
+        return jsonify({"response": "تم الانتهاء من جميع المدخلات.", "transcript": transcript})
 
+    field = report_fields[step]
+    session["data"][field] = transcript
+    session["step"] += 1
 
-def get_next_prompt(current_field):
-    fields = list(field_prompts.keys())
-    try:
-        idx = fields.index(current_field)
-        return fields[idx + 1] if idx + 1 < len(fields) else None
-    except ValueError:
-        return fields[0]
-
-
-def speak_text(text):
-    audio = generate(
-        text=text,
-        voice=Voice(voice_id="EXAVITQu4vr4xnSDxMaL", settings=VoiceSettings(stability=0.5, similarity_boost=0.8))
-    )
-    return audio
-
-
-@app.route("/next", methods=["GET"])
-def next_prompt():
-    if not user_session["current_field"]:
-        user_session["current_field"] = list(field_prompts.keys())[0]
-
-    field = user_session["current_field"]
-    prompt = field_prompts[field]
-    user_session["last_prompt"] = prompt
-    audio = speak_text(prompt)
-    return jsonify({
-        "prompt": prompt,
-        "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
-    })
-
-
-@app.route("/speak", methods=["POST"])
-def process_voice():
-    audio_data = request.files["audio"]
-    with tempfile.NamedTemporaryFile(suffix=".webm", delete=False) as temp:
-        audio_data.save(temp.name)
-        temp_path = temp.name
-
-    transcript = transcribe_audio(temp_path)
-    intent = detect_intent(transcript)
-    current_field = user_session["current_field"]
-
-    if intent == "redo":
-        response = speak_text("🔁 حسنًا، كرر الإجابة من فضلك.")
-        return jsonify({"redo": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
-
-    elif intent == "append":
-        addition = rephrase_text(transcript)
-        user_session["fields"][current_field] += " " + addition
-        response = speak_text("📌 تمت إضافة المعلومة، هل ترغب في المتابعة؟")
-        return jsonify({"append": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
-
-    elif intent in ["approve", "unknown"]:
-        refined = rephrase_text(transcript)
-        user_session["fields"][current_field] = refined
-
-        next_field = get_next_prompt(current_field)
-        if next_field:
-            user_session["current_field"] = next_field
-            prompt = field_prompts[next_field]
-            user_session["last_prompt"] = prompt
-            audio = speak_text(prompt)
-            return jsonify({
-                "field_saved": True,
-                "next_field": next_field,
-                "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(audio).decode()}"
-            })
-        else:
-            create_report(user_session["fields"])
-            response = speak_text("✅ تم إنشاء التقرير بنجاح وتم إرساله إلى البريد.")
-            return jsonify({"done": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(response).decode()}"})
-
+    if session["step"] < len(report_fields):
+        next_prompt = field_prompts[report_fields[session["step"]]]
     else:
-        error_audio = speak_text("❗ لم أفهم، هل يمكنك التوضيح؟")
-        return jsonify({"error": True, "audio_url": f"data:audio/mpeg;base64,{base64.b64encode(error_audio).decode()}"})
+        next_prompt = "📄 يتم الآن تجهيز التقرير النهائي..."
 
-def create_report(fields):
-    doc = DocxTemplate("police_report_template.docx")
-    doc.render(fields)
-    output_path = "/tmp/final_report.docx"
+    if session["step"] == len(report_fields):
+        file_path = generate_report(user_id)
+        send_email_with_attachment(file_path)
+        response = "✅ تم إرسال التقرير عبر البريد الإلكتروني. شكراً لك!"
+    else:
+        response = next_prompt
+
+    return jsonify({"transcript": transcript, "response": response})
+
+
+def generate_report(user_id):
+    session = user_sessions[user_id]
+    data = session["data"]
+
+    doc = Document("police_report_template.docx")
+    for p in doc.paragraphs:
+        for key in report_fields:
+            if f"{{{{{key}}}}}" in p.text:
+                inline = p.runs
+                for i in range(len(inline)):
+                    if f"{{{{{key}}}}}" in inline[i].text:
+                        inline[i].text = inline[i].text.replace(f"{{{{{key}}}}}", data.get(key, ""))
+
+    output_path = f"report_{user_id}.docx"
     doc.save(output_path)
-    send_email(output_path)
+    return output_path
 
-def send_email(file_path):
-    print(f"📤 Sending report from {file_path} to frnreports@gmail.com ... (mocked)")
+
+def send_email_with_attachment(file_path):
+    msg = MIMEMultipart()
+    msg["From"] = EMAIL_SENDER
+    msg["To"] = EMAIL_RECEIVER
+    msg["Subject"] = "📄 Police Report Submission"
+
+    body = MIMEText("Attached is the completed police report.", "plain")
+    msg.attach(body)
+
+    with open(file_path, "rb") as f:
+        part = MIMEApplication(f.read(), Name=os.path.basename(file_path))
+        part["Content-Disposition"] = f'attachment; filename="{os.path.basename(file_path)}"'
+        msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.send_message(msg)
+
+
+@app.route("/stream-audio")
+def stream_audio():
+    text = request.args.get("text", "مرحباً! كيف يمكنني مساعدتك اليوم؟")
+    audio_stream = eleven.text_to_speech.stream(
+        text=text,
+        voice_id=VOICE_ID,
+        model_id="eleven_monolingual_v1"
+    )
+
+    def generate_stream():
+        for chunk in audio_stream:
+            yield chunk
+
+    return Response(generate_stream(), content_type="audio/mpeg")
+
 
 @app.route("/")
 def index():
     return render_template("index.html")
+
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
