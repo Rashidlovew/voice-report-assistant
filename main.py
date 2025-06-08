@@ -1,5 +1,3 @@
-// ✅ script.js - Final version with status indicators and bug fixes
-
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
