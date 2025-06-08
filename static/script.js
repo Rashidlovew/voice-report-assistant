@@ -1,4 +1,4 @@
-// ✅ script.js - Final version with status indicators and bug fixes
+// ✅ script.js - Updated with greeting fix and response playback
 
 let isRecording = false;
 let mediaRecorder;
@@ -78,16 +78,22 @@ async function startRecording() {
 
         const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
         const reader = new FileReader();
+
         reader.onloadend = async () => {
             const base64Audio = reader.result;
+
             const response = await fetch("/submitAudio", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ audio: base64Audio })
             });
             const result = await response.json();
+
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
+
+            // ✅ Play assistant's response after user's reply
+            await playAudioStream(result.response);
 
             const intentResponse = await fetch("/analyze-intent", {
                 method: "POST",
@@ -111,9 +117,10 @@ async function startRecording() {
                 startAssistant();
             } else {
                 updateStatus("✅ تم الانتهاء من جميع المدخلات.");
-                playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
+                await playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
             }
         };
+
         reader.readAsDataURL(audioBlob);
     };
 
@@ -190,4 +197,5 @@ function renderFieldButtons() {
         fieldButtons.appendChild(btn);
     });
 }
+
 renderFieldButtons();
