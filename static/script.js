@@ -1,5 +1,3 @@
-// ✅ script.js - Updated with greeting fix and response playback
-
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
@@ -22,7 +20,7 @@ startBtn.addEventListener("click", () => {
 });
 
 function greetUser() {
-    const welcome = "أهلاً وسهلاً في مساعد التقارير. راح أطرح عليك بعض الأسئلة، وجاوبني بصوتك بعد كل سؤال. جاهز؟ نبدأ!";
+    const welcome = "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.";
     playAudioStream(welcome).then(() => {
         fieldIndex = 0;
         startAssistant();
@@ -39,12 +37,12 @@ function showMicIcon(show) {
 
 async function playAudioStream(text) {
     return new Promise((resolve) => {
-        updateStatus("🔊 يتحدث...");
+        updateStatus("🔊 يتحدث.");
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.play();
         audioPlayer.addEventListener("ended", function handler() {
             audioPlayer.removeEventListener("ended", handler);
-            updateStatus("🎤 في انتظار الصوت...");
+            updateStatus("🎤 في انتظار الصوت.");
             resolve();
         });
     });
@@ -52,7 +50,7 @@ async function playAudioStream(text) {
 
 async function startAssistant() {
     currentField = fieldQueue[fieldIndex];
-    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`).textContent;
+    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`)?.textContent || "";
     const promptText = `🎙️ أرسل ${arabicLabel} من فضلك.`;
     await playAudioStream(promptText);
     await startRecording();
@@ -78,22 +76,16 @@ async function startRecording() {
 
         const audioBlob = new Blob(audioChunks, { type: "audio/webm" });
         const reader = new FileReader();
-
         reader.onloadend = async () => {
             const base64Audio = reader.result;
-
             const response = await fetch("/submitAudio", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({ audio: base64Audio })
             });
             const result = await response.json();
-
             transcriptionText.textContent = result.transcript || "";
             responseText.textContent = result.response || "";
-
-            // ✅ Play assistant's response after user's reply
-            await playAudioStream(result.response);
 
             const intentResponse = await fetch("/analyze-intent", {
                 method: "POST",
@@ -117,17 +109,16 @@ async function startRecording() {
                 startAssistant();
             } else {
                 updateStatus("✅ تم الانتهاء من جميع المدخلات.");
-                await playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
+                playAudioStream("✅ تم الانتهاء من جميع المدخلات. شكراً لك!");
             }
         };
-
         reader.readAsDataURL(audioBlob);
     };
 
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-    updateStatus("🎙️ تسجيل الصوت...");
+    updateStatus("🎙️ تسجيل الصوت.");
     detectSilence(stream, stopRecording, 6000, 5);
 }
 
@@ -173,7 +164,7 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
 }
 
 function renderFieldButtons() {
-    fieldButtons.innerHTML = ""; // Prevent duplicates
+    fieldButtons.innerHTML = "";
     const arabicLabels = {
         Date: "التاريخ",
         Briefing: "موجز الواقعة",
@@ -197,5 +188,4 @@ function renderFieldButtons() {
         fieldButtons.appendChild(btn);
     });
 }
-
 renderFieldButtons();
