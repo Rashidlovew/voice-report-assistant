@@ -94,6 +94,42 @@ def handle_audio():
     return jsonify({"transcript": transcript, "response": response})
 
 
+@app.route("/analyze-intent", methods=["POST"])
+def analyze_intent():
+    data = request.get_json()
+    message = data.get("message", "")
+
+    prompt = f"""
+المستخدم قال: "{message}"
+
+حدد نيته بناءً على الجملة:
+- إذا كان يوافق على الاستمرار، أجب فقط: approve
+- إذا كان يريد إعادة الإدخال، أجب فقط: redo
+- إذا كان يريد بدء من جديد، أجب فقط: restart
+- إذا كان يريد تعديل حقل معين، أجب بصيغة: fieldCorrection:FIELD_KEY
+
+FIELD_KEY يجب أن يكون أحد هذه: Date, Briefing, LocationObservations, Examination, Outcomes, TechincalOpinion
+"""
+
+    response = openai.chat.completions.create(
+        model="gpt-4",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.2
+    )
+
+    reply = response.choices[0].message.content.strip()
+
+    if reply.startswith("fieldCorrection:"):
+        field_key = reply.split(":")[1]
+        return jsonify({"intent": "fieldCorrection", "field": field_key})
+    elif reply == "redo":
+        return jsonify({"intent": "redo"})
+    elif reply == "restart":
+        return jsonify({"intent": "restart"})
+    else:
+        return jsonify({"intent": "approve"})
+
+
 def generate_report(user_id):
     session = user_sessions[user_id]
     data = session["data"]
