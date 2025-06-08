@@ -1,50 +1,36 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
-    <title>🎙️ Voice Report Assistant</title>
+    <title>Voice Report Assistant</title>
     <style>
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', sans-serif;
             padding: 20px;
+            direction: rtl;
+            text-align: right;
         }
-
-        #micIcon {
-            display: none;
-            font-size: 30px;
-            color: red;
-            margin-left: 10px;
-        }
-
         button {
-            padding: 10px 20px;
+            padding: 10px 15px;
             font-size: 16px;
+            margin-top: 10px;
+            cursor: pointer;
         }
-
-        #fieldButtons button {
-            margin: 5px;
+        #status, #response {
+            margin-top: 20px;
+            font-size: 18px;
         }
     </style>
 </head>
 <body>
     <h2>🧠 Voice Report Assistant</h2>
     <button id="startBtn">🎙️ Start Assistant</button>
-    <span id="micIcon">🎤</span>
 
-    <p><strong>Transcription:</strong> <span id="transcriptionText"></span></p>
-    <p><strong>Response:</strong> <span id="responseText"></span></p>
-    <audio id="audioPlayer" controls></audio>
+    <div id="status"></div>
+    <div id="response"></div>
 
-    <h3>📝 Edit Specific Field (Optional)</h3>
-    <div id="fieldButtons">
-        <button onclick="goToField('Date')">التاريخ</button>
-        <button onclick="goToField('Briefing')">موجز الواقعة</button>
-        <button onclick="goToField('LocationObservations')">معاينة الموقع</button>
-        <button onclick="goToField('Examination')">نتيجة الفحص الفني</button>
-        <button onclick="goToField('Outcomes')">النتيجة</button>
-        <button onclick="goToField('TechincalOpinion')">الرأي الفني</button>
-    </div>
+    <audio id="audioPlayer" controls style="margin-top: 20px; display: block;"></audio>
 
-    <script src="/static/script.js"></script>
+    <script src="static/script.js"></script>
 </body>
 </html>
