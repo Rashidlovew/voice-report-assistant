@@ -22,7 +22,7 @@ startBtn.addEventListener("click", () => {
 });
 
 function greetUser() {
-    const welcome = "مرحباً بك في مساعد التقارير الصوتي الخاص بقسم الهندسة الجنائية. سأطرح عليك مجموعة من الأسئلة الصوتية لجمع البيانات، من فضلك أجب بعد سماع كل سؤال.";
+    const welcome = "أهلاً وسهلاً في مساعد التقارير. راح أطرح عليك بعض الأسئلة، وجاوبني بصوتك بعد كل سؤال. جاهز؟ نبدأ!";
     playAudioStream(welcome).then(() => {
         fieldIndex = 0;
         startAssistant();
