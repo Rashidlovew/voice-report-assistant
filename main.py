@@ -1,7 +1,7 @@
 import os
 import base64
 import tempfile
-from flask import Flask, request, jsonify, send_file, Response, render_template
+from flask import Flask, request, jsonify, send_file, render_template
 from flask_cors import CORS
 from docx import Document
 import smtplib
@@ -9,6 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.application import MIMEApplication
 from email.mime.text import MIMEText
 import openai
+import re
 
 # === Load environment variables ===
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
@@ -76,7 +77,14 @@ def handle_audio():
         return jsonify({"response": "تم الانتهاء من جميع المدخلات.", "transcript": transcript})
 
     field = report_fields[step]
-    session["data"][field] = transcript
+
+    if field == "Date":
+        # Try to extract only the date from the transcript
+        date_match = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})", transcript)
+        session["data"][field] = date_match.group(0) if date_match else transcript
+    else:
+        session["data"][field] = transcript
+
     session["step"] += 1
 
     if session["step"] < len(report_fields):
