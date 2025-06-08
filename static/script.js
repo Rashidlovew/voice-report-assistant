@@ -1,3 +1,5 @@
+// ✅ script.js - Final version with status indicators and bug fixes
+
 let isRecording = false;
 let mediaRecorder;
 let audioChunks = [];
@@ -37,12 +39,12 @@ function showMicIcon(show) {
 
 async function playAudioStream(text) {
     return new Promise((resolve) => {
-        updateStatus("🔊 يتحدث.");
+        updateStatus("🔊 يتحدث...");
         audioPlayer.src = `/stream-audio?text=${encodeURIComponent(text)}`;
         audioPlayer.play();
         audioPlayer.addEventListener("ended", function handler() {
             audioPlayer.removeEventListener("ended", handler);
-            updateStatus("🎤 في انتظار الصوت.");
+            updateStatus("🎤 في انتظار الصوت...");
             resolve();
         });
     });
@@ -50,7 +52,7 @@ async function playAudioStream(text) {
 
 async function startAssistant() {
     currentField = fieldQueue[fieldIndex];
-    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`)?.textContent || "";
+    const arabicLabel = document.querySelector(`#fieldButtons button[data-field='${currentField}']`).textContent;
     const promptText = `🎙️ أرسل ${arabicLabel} من فضلك.`;
     await playAudioStream(promptText);
     await startRecording();
@@ -118,7 +120,7 @@ async function startRecording() {
     mediaRecorder.start();
     isRecording = true;
     showMicIcon(true);
-    updateStatus("🎙️ تسجيل الصوت.");
+    updateStatus("🎙️ تسجيل الصوت...");
     detectSilence(stream, stopRecording, 6000, 5);
 }
 
@@ -164,7 +166,7 @@ function detectSilence(stream, onSilence, silenceDelay = 6000, threshold = 5) {
 }
 
 function renderFieldButtons() {
-    fieldButtons.innerHTML = "";
+    fieldButtons.innerHTML = ""; // Prevent duplicates
     const arabicLabels = {
         Date: "التاريخ",
         Briefing: "موجز الواقعة",
