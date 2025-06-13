@@ -11,7 +11,6 @@ from email.mime.text import MIMEText
 import openai
 import re
 
-# === Load environment variables ===
 EMAIL_SENDER = os.getenv("EMAIL_SENDER")
 EMAIL_PASSWORD = os.getenv("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.getenv("EMAIL_RECEIVER", "frnreports@gmail.com")
@@ -79,7 +78,6 @@ def handle_audio():
     field = report_fields[step]
 
     if field == "Date":
-        # Try to extract only the date from the transcript
         date_match = re.search(r"(\d{1,2}[/-]\d{1,2}[/-]\d{2,4}|\d{4}[/-]\d{1,2}[/-]\d{1,2})", transcript)
         session["data"][field] = date_match.group(0) if date_match else transcript
     else:
@@ -110,13 +108,15 @@ def analyze_intent():
     prompt = f"""
 المستخدم قال: "{message}"
 
-حدد نيته بناءً على الجملة:
-- إذا كان يوافق على الاستمرار، أجب فقط: approve
-- إذا كان يريد إعادة الإدخال، أجب فقط: redo
-- إذا كان يريد بدء من جديد، أجب فقط: restart
-- إذا كان يريد تعديل حقل معين، أجب بصيغة: fieldCorrection:FIELD_KEY
+تحليل النية:
+إذا فهمت أن المستخدم وافق على المتابعة بأي طريقة، أجب: approve
+إذا كان يريد إعادة السؤال، أجب: redo
+إذا أراد البدء من جديد، أجب: restart
+إذا أراد تعديل حقل معين، أجب بصيغة: fieldCorrection:FIELD_KEY
 
-FIELD_KEY يجب أن يكون أحد هذه: Date, Briefing, LocationObservations, Examination, Outcomes, TechincalOpinion
+ملاحظات:
+- استنتج النية من الجملة كاملة وليس من كلمات مباشرة.
+- FIELD_KEY يجب أن يكون واحدًا من: Date, Briefing, LocationObservations, Examination, Outcomes, TechincalOpinion
 """
 
     response = openai.chat.completions.create(
